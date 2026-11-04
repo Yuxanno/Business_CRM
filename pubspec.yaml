@@ -1,0 +1,57 @@
+name: business_manager
+description: "Business Manager — personal business management application."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management
+  provider: ^6.1.2
+
+  # Local database
+  sqflite: ^2.3.3+1
+  path: ^1.9.0
+
+  # Lightweight settings
+  shared_preferences: ^2.3.3
+
+  # Charts
+  fl_chart: ^0.69.0
+
+  # Formatting
+  intl: ^0.20.2
+
+  # List swipe actions
+  flutter_slidable: ^3.1.1
+
+  # UUID generation
+  uuid: ^4.5.1
+
+  # Navigation
+  go_router: ^14.6.2
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+  # Haptics (uses Flutter's built-in HapticFeedback)
+  # No extra package needed — HapticFeedback is in flutter/services.dart
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  generate: true
+
+  assets:
+    - assets/images/
