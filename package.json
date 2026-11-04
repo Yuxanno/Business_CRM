@@ -1,0 +1,67 @@
+{
+  "name": "biznes-crm",
+  "version": "1.0.0",
+  "description": "Business Manager — mobile CRM app with Flutter frontend and Node.js backend",
+  "private": true,
+  "scripts": {
+    "// ─── INSTALL ───────────────────────────────────────────────────────": "",
+    "install:all": "npm install && flutter pub get",
+    "install:backend": "npm install",
+    "install:flutter": "flutter pub get",
+
+    "// ─── DEV SERVERS ───────────────────────────────────────────────────": "",
+    "dev": "node server/index.js",
+    "dev:backend": "node server/index.js",
+    "dev:nodemon": "nodemon server/index.js",
+
+    "// ─── FLUTTER ────────────────────────────────────────────────────────": "",
+    "flutter": "flutter run -d chrome --web-renderer html",
+    "flutter:chrome": "flutter run -d chrome --web-renderer html",
+    "flutter:android": "flutter run -d android",
+    "flutter:ios": "flutter run -d ios",
+    "flutter:debug": "flutter run --debug",
+    "flutter:release": "flutter run --release",
+    "flutter:hot": "flutter run --hot",
+
+    "// ─── BUILD ──────────────────────────────────────────────────────────": "",
+    "build:apk": "flutter build apk --release",
+    "build:apk:debug": "flutter build apk --debug",
+    "build:aab": "flutter build appbundle --release",
+    "build:web": "flutter build web --release",
+    "build:ios": "flutter build ios --release",
+    "build:backend": "echo No build step for Node.js backend",
+
+    "// ─── FLUTTER QA ─────────────────────────────────────────────────────": "",
+    "analyze": "flutter analyze",
+    "analyze:fix": "dart fix --apply && flutter analyze",
+    "test": "flutter test",
+    "test:backend": "echo No tests configured for backend yet",
+    "format": "dart format lib/",
+    "clean": "flutter clean && flutter pub get",
+
+    "// ─── DATABASE ───────────────────────────────────────────────────────": "",
+    "db:check": "node -e \"require('dotenv').config(); const {MongoClient}=require('mongodb'); MongoClient.connect(process.env.MONGODB_URI).then(c=>{console.log('MongoDB connected');c.close()}).catch(e=>console.error('MongoDB error:',e.message))\"",
+
+    "// ─── UTILS ──────────────────────────────────────────────────────────": "",
+    "info": "flutter --version && node --version && npm --version",
+    "devices": "flutter devices",
+    "emulators": "flutter emulators",
+    "upgrade": "flutter pub upgrade && npm update",
+    "doctor": "flutter doctor -v"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.7.2",
+    "cors": "^2.8.5",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
