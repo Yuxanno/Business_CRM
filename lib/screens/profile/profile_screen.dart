@@ -9,7 +9,10 @@ import '../../providers/debt_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../services/financial_calculator.dart';
 import '../../components/app_avatar.dart';
+import '../../components/app_button.dart';
 import '../../components/app_card.dart';
+import '../../components/app_confirm_sheet.dart';
+import 'account_store.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -22,20 +25,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _activeOrdersCount = 0;
   int _receivableCents = 0;
   int _payableCents = 0;
+  String _accountName = '';
+  String _login = '';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await context.read<CustomerProvider>().load();
-      await context.read<DebtProvider>().load();
-
+      final settingsProvider = context.read<SettingsProvider>();
+      final customerProvider = context.read<CustomerProvider>();
+      final debtProvider = context.read<DebtProvider>();
       final orderProvider = context.read<OrderProvider>();
+
+      final account = await AccountStore.load();
+      if (!mounted) return;
+      setState(() {
+        _accountName = account.name;
+        _login = account.login;
+      });
+      // Sync all server-provided settings
+      final needsUpdate = (account.businessName.isNotEmpty &&
+              settingsProvider.settings.businessName !=
+                  account.businessName) ||
+          (account.currency != null &&
+              settingsProvider.settings.currency != account.currency) ||
+          (account.locale != null &&
+              settingsProvider.settings.locale != account.locale);
+      if (needsUpdate) {
+        await settingsProvider.update(
+          settingsProvider.settings.copyWith(
+            businessName: account.businessName.isNotEmpty
+                ? account.businessName
+                : settingsProvider.settings.businessName,
+            currency:
+                account.currency ?? settingsProvider.settings.currency,
+            locale: account.locale ?? settingsProvider.settings.locale,
+          ),
+        );
+      }
+
+      await customerProvider.load();
+      await debtProvider.load();
       await orderProvider.load();
 
-      final debtProvider = context.read<DebtProvider>();
-      final receivable =
-          await debtProvider.getTotalReceivableCents();
+      final receivable = await debtProvider.getTotalReceivableCents();
       final payable = await debtProvider.getTotalPayableCents();
       final activeCount = await orderProvider.getActiveCount();
 
@@ -56,260 +89,203 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final customers = context.watch<CustomerProvider>();
     final currency = settings.currency;
 
-    final businessName = settings.settings.businessName.isNotEmpty
-        ? settings.settings.businessName
-        : 'Мой бизнес';
-    final ownerName = settings.settings.ownerName.isNotEmpty
-        ? settings.settings.ownerName
-        : null;
+    final ownerName = settings.settings.ownerName.trim();
+    final businessName = settings.settings.businessName.trim();
+    final displayName = _accountName.isNotEmpty
+        ? _accountName
+        : ownerName.isNotEmpty
+            ? ownerName
+            : 'Мой профиль';
+
+    final debtValue = _receivableCents > 0
+        ? 'вам ${FinancialCalculator.formatCentsCompact(_receivableCents, currency: currency)}'
+        : _payableCents > 0
+            ? 'вы ${FinancialCalculator.formatCentsCompact(_payableCents, currency: currency)}'
+            : null;
 
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Профиль',
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w700,
-                              color: colors.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => context.go('/profile/settings'),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: colors.surfaceSecondary,
-                          borderRadius:
-                              BorderRadius.circular(AppRadius.sm),
-                          border: Border.all(color: colors.border),
-                        ),
-                        child: Icon(Icons.settings_outlined,
-                            size: 20, color: colors.textSecondary),
-                      ),
-                    ),
-                  ],
-                ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, 96),
+          children: [
+            Text(
+              'Мой профиль',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.4,
+                color: colors.textPrimary,
               ),
             ),
-            // Business card
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, 0),
-                child: AppCard(
-                  child: Row(
-                    children: [
-                      AppAvatar(
-                          name: businessName,
-                          size: 56),
-                      const SizedBox(width: AppSpacing.lg),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              businessName,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: colors.textPrimary,
-                              ),
-                            ),
-                            if (ownerName != null)
+            const SizedBox(height: AppSpacing.lg),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Row(
+                      children: [
+                        AppAvatar(name: displayName, size: 52),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                ownerName,
+                                displayName,
                                 style: TextStyle(
-                                    fontSize: 13,
-                                    color: colors.textSecondary),
-                              ),
-                            const SizedBox(height: AppSpacing.xs),
-                            GestureDetector(
-                              onTap: () =>
-                                  context.go('/profile/settings'),
-                              child: Text(
-                                'Редактировать профиль',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colors.primary,
-                                  fontWeight: FontWeight.w500,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.textPrimary,
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ),
-            // Quick stats
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl, AppSpacing.md, AppSpacing.xl, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _StatTile(
-                        label: 'Клиентов',
-                        value: '${customers.totalCount}',
-                        icon: Icons.people_outline_rounded,
-                        color: colors.primary,
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: _StatTile(
-                        label: 'Активных заказов',
-                        value: '$_activeOrdersCount',
-                        icon: Icons.receipt_long_outlined,
-                        color: const Color(0xFF3B82F6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (_receivableCents > 0 || _payableCents > 0)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.xl, AppSpacing.sm, AppSpacing.xl, 0),
-                  child: Row(
-                    children: [
-                      if (_receivableCents > 0)
-                        Expanded(
-                          child: _StatTile(
-                            label: 'Мне должны',
-                            value: FinancialCalculator.formatCentsCompact(
-                                _receivableCents, currency: currency),
-                            icon: Icons.trending_up_rounded,
-                            color: colors.income,
-                          ),
-                        ),
-                      if (_receivableCents > 0 && _payableCents > 0)
-                        const SizedBox(width: AppSpacing.sm),
-                      if (_payableCents > 0)
-                        Expanded(
-                          child: _StatTile(
-                            label: 'Я должен',
-                            value: FinancialCalculator.formatCentsCompact(
-                                _payableCents, currency: currency),
-                            icon: Icons.trending_down_rounded,
-                            color: colors.expense,
-                          ),
-                        ),
-                    ],
+                  Divider(height: 1, color: colors.divider),
+                  _InfoRow(
+                    label: 'Имя',
+                    value: _accountName.isNotEmpty ? _accountName : ownerName,
+                    onTap: _openSettings,
                   ),
-                ),
-              ),
-            // Menu items
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl, AppSpacing.xxl, AppSpacing.xl, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Управление',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: colors.textMuted,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    AppCard(
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          _MenuItem(
-                            icon: Icons.people_outline_rounded,
-                            label: 'Клиенты',
-                            value: '${customers.totalCount}',
-                            iconColor: colors.primary,
-                            onTap: () =>
-                                context.go('/profile/customers'),
-                          ),
-                          Divider(
-                              height: 1,
-                              indent: AppSpacing.xl + 36,
-                              color: colors.divider),
-                          _MenuItem(
-                            icon:
-                                Icons.account_balance_wallet_outlined,
-                            label: 'Долги',
-                            iconColor: colors.warning,
-                            onTap: () =>
-                                context.go('/profile/debts'),
-                          ),
-                          Divider(
-                              height: 1,
-                              indent: AppSpacing.xl + 36,
-                              color: colors.divider),
-                          _MenuItem(
-                            icon: Icons.bar_chart_rounded,
-                            label: 'Отчёты',
-                            iconColor: const Color(0xFF8B5CF6),
-                            onTap: () =>
-                                context.go('/profile/reports'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xxl),
-                    Text(
-                      'Настройки',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: colors.textMuted,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    AppCard(
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          _MenuItem(
-                            icon: Icons.settings_outlined,
-                            label: 'Настройки',
-                            iconColor: colors.textSecondary,
-                            onTap: () =>
-                                context.go('/profile/settings'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  Divider(height: 1, color: colors.divider),
+                  _InfoRow(
+                    label: 'Логин',
+                    value: _login,
+                    onTap: _openSettings,
+                  ),
+                  Divider(height: 1, color: colors.divider),
+                  _InfoRow(
+                    label: 'Бизнес',
+                    value: businessName,
+                    onTap: _openSettings,
+                  ),
+                  Divider(height: 1, color: colors.divider),
+                  _InfoRow(
+                    label: 'Валюта',
+                    value: settings.currency,
+                    onTap: _openSettings,
+                  ),
+                  Divider(height: 1, color: colors.divider),
+                  _InfoRow(
+                    label: 'Язык',
+                    value: settings.locale == 'ru' ? 'Русский' : 'English',
+                    onTap: _openSettings,
+                  ),
+                ],
               ),
             ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 80),
+            const SizedBox(height: AppSpacing.lg),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  _MenuItem(
+                    label: 'Клиенты',
+                    value: '${customers.totalCount}',
+                    onTap: () => context.go('/profile/customers'),
+                  ),
+                  Divider(height: 1, color: colors.divider),
+                  _MenuItem(
+                    label: 'Заказы в работе',
+                    value: '$_activeOrdersCount',
+                    onTap: () => context.go('/orders'),
+                  ),
+                  Divider(height: 1, color: colors.divider),
+                  _MenuItem(
+                    label: 'Долги',
+                    value: debtValue,
+                    onTap: () => context.go('/profile/debts'),
+                  ),
+                  Divider(height: 1, color: colors.divider),
+                  _MenuItem(
+                    label: 'Отчёты',
+                    onTap: () => context.go('/profile/reports'),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(height: AppSpacing.lg),
+            AppButton(
+              label: 'Выйти',
+              variant: AppButtonVariant.danger,
+              onPressed: _logout,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSettings() async {
+    await context.push('/profile/settings');
+    final account = await AccountStore.load();
+    if (!mounted) return;
+    setState(() {
+      _accountName = account.name;
+      _login = account.login;
+    });
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showConfirmSheet(
+      context: context,
+      title: 'Выйти из аккаунта?',
+      message: 'Чтобы снова открыть данные, нужно будет войти.',
+      confirmLabel: 'Выйти',
+      cancelLabel: 'Остаться',
+    );
+    if (confirm != true || !mounted) return;
+    await AccountStore.clearSession();
+    if (mounted) context.go('/login');
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final empty = value.trim().isEmpty;
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 15, color: colors.textPrimary),
+              ),
+            ),
+            Text(
+              empty ? 'Добавить' : value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: empty ? FontWeight.w600 : FontWeight.w500,
+                color: empty ? colors.primary : colors.textSecondary,
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: colors.textMuted),
           ],
         ),
       ),
@@ -317,62 +293,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-
-    return AppCard(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: colors.textPrimary,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            label,
-            style: TextStyle(fontSize: 11, color: colors.textMuted),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _MenuItem extends StatelessWidget {
   const _MenuItem({
-    required this.icon,
     required this.label,
-    required this.iconColor,
     required this.onTap,
     this.value,
   });
 
-  final IconData icon;
   final String label;
-  final Color iconColor;
   final VoidCallback onTap;
   final String? value;
 
@@ -380,46 +308,31 @@ class _MenuItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 18, color: iconColor),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: colors.textPrimary,
-                  ),
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: colors.textPrimary,
                 ),
               ),
-              if (value != null)
-                Text(
-                  value!,
-                  style: TextStyle(
-                      fontSize: 13, color: colors.textMuted),
-                ),
-              const SizedBox(width: AppSpacing.sm),
-              Icon(Icons.chevron_right_rounded,
-                  size: 18, color: colors.textMuted),
-            ],
-          ),
+            ),
+            if (value != null)
+              Text(
+                value!,
+                style: TextStyle(fontSize: 14, color: colors.textSecondary),
+              ),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: colors.textMuted),
+          ],
         ),
       ),
     );

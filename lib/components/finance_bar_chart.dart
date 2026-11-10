@@ -32,7 +32,7 @@ class FinanceBarChart extends StatelessWidget {
     for (final row in dailyData) {
       final dayStr = row['day'] as String; // 'YYYY-MM-DD'
       final day = int.parse(dayStr.split('-')[2]);
-      final total = (row['total'] as int?) ?? 0;
+      final total = (row['total'] as num?)?.toInt() ?? 0;
       if (row['type'] == 'income') {
         incomeByDay[day] = (incomeByDay[day] ?? 0) + total;
       } else {

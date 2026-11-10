@@ -26,12 +26,12 @@ class _CategoryChartWidgetState extends State<CategoryChartWidget> {
   int _touchedIndex = -1;
 
   static const List<Color> _palette = [
-    Color(0xFF6366F1),
+    Color(0xFF0F766E),
     Color(0xFF10B981),
     Color(0xFFF59E0B),
     Color(0xFFEF4444),
-    Color(0xFF3B82F6),
-    Color(0xFF8B5CF6),
+    Color(0xFF14B8A6),
+    Color(0xFF0D9488),
     Color(0xFFEC4899),
     Color(0xFF06B6D4),
     Color(0xFF84CC16),
@@ -241,7 +241,7 @@ class _LegendItem extends StatelessWidget {
             horizontal: AppSpacing.md, vertical: AppSpacing.sm),
         decoration: BoxDecoration(
           color: isSelected
-              ? data.color.withOpacity(0.08)
+              ? data.color.withValues(alpha: 0.08)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.sm),
         ),

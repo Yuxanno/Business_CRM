@@ -97,7 +97,7 @@ class AppTransaction {
 
   factory AppTransaction.fromMap(Map<String, dynamic> map) => AppTransaction(
         id: map['id'] as String,
-        amountCents: map['amountCents'] as int,
+        amountCents: (map['amountCents'] as num).toInt(),
         type: TransactionType.fromString(map['type'] as String),
         category: map['category'] as String?,
         description: map['description'] as String?,

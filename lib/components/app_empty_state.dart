@@ -25,25 +25,32 @@ class AppEmptyState extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxxl),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xl,
+          vertical: AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 72,
-              height: 72,
+              width: 88,
+              height: 88,
               decoration: BoxDecoration(
-                color: colors.surfaceSecondary,
-                shape: BoxShape.circle,
+                color: colors.primaryContainer,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: colors.primary.withValues(alpha: 0.25),
+                ),
               ),
-              child: Icon(icon, size: 32, color: colors.textMuted),
+              child: Icon(icon, size: 36, color: colors.primary),
             ),
             const SizedBox(height: AppSpacing.xl),
             Text(
               title,
               style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
                 color: colors.textPrimary,
               ),
               textAlign: TextAlign.center,
@@ -53,7 +60,7 @@ class AppEmptyState extends StatelessWidget {
               Text(
                 subtitle!,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 14,
                   color: colors.textSecondary,
                   height: 1.5,
                 ),
@@ -61,11 +68,12 @@ class AppEmptyState extends StatelessWidget {
               ),
             ],
             if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: AppSpacing.xxl),
+              const SizedBox(height: AppSpacing.xl),
               AppButton(
                 label: actionLabel!,
                 onPressed: onAction,
                 isFullWidth: false,
+                icon: Icons.add_rounded,
               ),
             ],
           ],
@@ -91,18 +99,27 @@ class AppErrorState extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxxl),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline_rounded,
-                size: 48, color: colors.expense),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: colors.expenseBackground,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(Icons.error_outline_rounded,
+                  size: 32, color: colors.expense),
+            ),
             const SizedBox(height: AppSpacing.lg),
             Text(
               message,
               style: TextStyle(
                 fontSize: 14,
                 color: colors.textSecondary,
+                height: 1.45,
               ),
               textAlign: TextAlign.center,
             ),

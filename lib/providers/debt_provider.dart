@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/debt.dart';
 import '../repositories/debt_repository.dart';
-import '../services/database_service.dart';
 
 class DebtProvider extends ChangeNotifier {
   final _repo = DebtRepository();
@@ -83,51 +82,19 @@ class DebtProvider extends ChangeNotifier {
       updatedAt: now,
     );
 
-    final db = await DatabaseService.instance.database;
-    await db.transaction((txn) async {
-      // Update debt
-      await txn.update(
-        'debts',
-        updatedDebt.toMap(),
-        where: 'id = ?',
-        whereArgs: [debtId],
-      );
-
-      // Insert debt payment
-      await txn.insert('debt_payments', {
-        'id': paymentId,
-        'debtId': debtId,
-        'amountCents': clamped,
-        'paidAt': now.toIso8601String(),
-        'notes': notes,
-        'transactionId': transactionId,
-      });
-
-      // Insert transaction
-      // Receivable payment = income (someone paid me)
-      // Payable payment = expense (I paid someone)
-      final txType = debt.direction == DebtDirection.receivable
-          ? 'income'
-          : 'expense';
-      await txn.insert('transactions', {
-        'id': transactionId,
-        'amountCents': clamped,
-        'type': txType,
-        'category': debt.direction == DebtDirection.receivable
-            ? 'debt_received'
-            : 'debt_paid',
-        'description': 'Debt payment: ${debt.personName}',
-        'date': now.toIso8601String(),
-        'createdAt': DateTime.now().toIso8601String(),
-        'debtId': debtId,
-        'linkedEntityType': 'debt_payment',
-        'linkedEntityId': paymentId,
-      });
-    });
+    await _repo.insertPayment(DebtPayment(
+      id: paymentId,
+      debtId: debtId,
+      amountCents: clamped,
+      paidAt: now,
+      notes: notes,
+      transactionId: transactionId,
+    ));
+    final fresh = await _repo.getById(debtId);
 
     final idx = _debts.indexWhere((d) => d.id == debtId);
     if (idx != -1) {
-      _debts[idx] = updatedDebt;
+      _debts[idx] = fresh ?? updatedDebt;
       notifyListeners();
     }
   }

@@ -16,6 +16,7 @@ import '../../components/app_card.dart';
 import '../../components/app_status_badge.dart';
 import '../../components/app_empty_state.dart';
 import '../../components/app_confirm_sheet.dart';
+import '../../components/app_templates.dart';
 
 class CustomerDetailScreen extends StatefulWidget {
   const CustomerDetailScreen({super.key, required this.customerId});
@@ -76,28 +77,44 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
 
     final customer = _customer!;
 
+    final owes = customer.outstandingBalanceCents > 0;
+
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
-        title: const Text('Клиент'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_rounded),
-            onPressed: () =>
-                context.go('/profile/customers/${customer.id}/edit'),
-          ),
-          IconButton(
-            icon: Icon(Icons.delete_outline_rounded, color: colors.expense),
-            onPressed: () => _delete(context),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
+      body: SafeArea(
+        child: RefreshIndicator(
         color: colors.primary,
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.xl),
           children: [
+            AppDetailHeader(
+              title: customer.name,
+              subtitle: owes
+                  ? 'Клиент должен вам. Заказы ниже.'
+                  : 'Контакты и заказы этого клиента.',
+              amountLabel: owes ? 'Должен вам' : 'Заказов',
+              amount: owes
+                  ? FinancialCalculator.formatCents(
+                      customer.outstandingBalanceCents,
+                      currency: currency,
+                    )
+                  : '${_orders.length}',
+              amountColor: owes ? colors.warning : colors.primary,
+              fallbackRoute: '/profile/customers',
+              actions: [
+                AppTextAction(
+                  label: 'Изменить',
+                  onPressed: () =>
+                      context.push('/profile/customers/${customer.id}/edit'),
+                ),
+                AppTextAction(
+                  label: 'Удалить',
+                  onPressed: () => _delete(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
             // Profile header
             AppCard(
               child: Row(
@@ -214,7 +231,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                 ),
                 const Spacer(),
                 GestureDetector(
-                  onTap: () => context.go('/orders/new'),
+                  onTap: () => context.push('/orders/new'),
                   child: Text(
                     '+ Новый заказ',
                     style: TextStyle(
@@ -245,6 +262,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             const SizedBox(height: 80),
           ],
         ),
+        ),
       ),
     );
   }
@@ -256,8 +274,10 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       message: 'Это действие нельзя отменить.',
     );
     if (confirm == true && mounted) {
-      await context.read<CustomerProvider>().delete(widget.customerId);
-      context.go('/profile/customers');
+      final cp = context.read<CustomerProvider>();
+      final router = GoRouter.of(context);
+      await cp.delete(widget.customerId);
+      router.go('/profile/customers');
     }
   }
 }

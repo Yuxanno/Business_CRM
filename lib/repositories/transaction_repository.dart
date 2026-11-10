@@ -1,125 +1,82 @@
 import '../models/transaction.dart';
-import '../services/database_service.dart';
+import '../services/api_client.dart';
 
 class TransactionRepository {
-  final _db = DatabaseService.instance;
+  final _api = ApiClient.instance;
 
-  Future<List<AppTransaction>> getAll() async {
-    final db = await _db.database;
-    final maps =
-        await db.query('transactions', orderBy: 'date DESC');
-    return maps.map(AppTransaction.fromMap).toList();
+  List<AppTransaction> _parse(dynamic json) {
+    final items = (json['items'] as List?) ?? const [];
+    return items
+        .map((e) => AppTransaction.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
+
+  Future<List<AppTransaction>> getAll() async =>
+      _parse(await _api.get('/api/transactions?limit=400'));
 
   Future<List<AppTransaction>> getForMonth(int year, int month) async {
-    final db = await _db.database;
-    final start = DateTime(year, month).toIso8601String();
-    final end = DateTime(year, month + 1).toIso8601String();
-    final maps = await db.query(
-      'transactions',
-      where: 'date >= ? AND date < ?',
-      whereArgs: [start, end],
-      orderBy: 'date DESC',
-    );
-    return maps.map(AppTransaction.fromMap).toList();
+    final start = DateTime(year, month).toUtc().toIso8601String();
+    final end = DateTime(year, month + 1).toUtc().toIso8601String();
+    return _parse(await _api.get(
+      '/api/transactions?from=${Uri.encodeQueryComponent(start)}&to=${Uri.encodeQueryComponent(end)}&limit=400',
+    ));
   }
 
-  Future<List<AppTransaction>> getForDateRange(
-      DateTime from, DateTime to) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'transactions',
-      where: 'date >= ? AND date <= ?',
-      whereArgs: [from.toIso8601String(), to.toIso8601String()],
-      orderBy: 'date DESC',
-    );
-    return maps.map(AppTransaction.fromMap).toList();
+  Future<List<AppTransaction>> getForDateRange(DateTime from, DateTime to) async {
+    return _parse(await _api.get(
+      '/api/transactions?from=${Uri.encodeQueryComponent(from.toUtc().toIso8601String())}&to=${Uri.encodeQueryComponent(to.toUtc().toIso8601String())}',
+    ));
   }
 
-  Future<List<AppTransaction>> getByType(TransactionType type) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'transactions',
-      where: 'type = ?',
-      whereArgs: [type.toStoredString()],
-      orderBy: 'date DESC',
-    );
-    return maps.map(AppTransaction.fromMap).toList();
-  }
+  Future<List<AppTransaction>> getByType(TransactionType type) async =>
+      _parse(await _api.get('/api/transactions?type=${type.toStoredString()}'));
 
-  Future<List<AppTransaction>> search(String query) async {
-    final db = await _db.database;
-    final q = '%${query.toLowerCase()}%';
-    final maps = await db.query(
-      'transactions',
-      where: 'LOWER(description) LIKE ? OR LOWER(category) LIKE ?',
-      whereArgs: [q, q],
-      orderBy: 'date DESC',
-    );
-    return maps.map(AppTransaction.fromMap).toList();
-  }
+  Future<List<AppTransaction>> search(String query) async => _parse(
+        await _api.get('/api/transactions?q=${Uri.encodeQueryComponent(query)}'),
+      );
 
   Future<void> insert(AppTransaction tx) async {
-    final db = await _db.database;
-    await db.insert('transactions', tx.toMap());
+    await _api.post('/api/transactions', tx.toMap());
   }
 
   Future<void> update(AppTransaction tx) async {
-    final db = await _db.database;
-    await db.update(
-      'transactions',
-      tx.toMap(),
-      where: 'id = ?',
-      whereArgs: [tx.id],
-    );
+    await _api.put('/api/transactions/${tx.id}', tx.toMap());
   }
 
   Future<void> delete(String id) async {
-    final db = await _db.database;
-    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+    await _api.delete('/api/transactions/$id');
   }
 
-  /// Sum of income for a given month (in cents).
   Future<int> getTotalIncomeCents(int year, int month) async {
-    final db = await _db.database;
-    final start = DateTime(year, month).toIso8601String();
-    final end = DateTime(year, month + 1).toIso8601String();
-    final result = await db.rawQuery('''
-      SELECT COALESCE(SUM(amountCents), 0) as total
-      FROM transactions
-      WHERE type = 'income' AND date >= ? AND date < ?
-    ''', [start, end]);
-    return (result.first['total'] as int?) ?? 0;
+    final list = await getForMonth(year, month);
+    return list
+        .where((t) => t.type == TransactionType.income)
+        .fold<int>(0, (s, t) => s + t.amountCents);
   }
 
-  /// Sum of expenses for a given month (in cents).
   Future<int> getTotalExpenseCents(int year, int month) async {
-    final db = await _db.database;
-    final start = DateTime(year, month).toIso8601String();
-    final end = DateTime(year, month + 1).toIso8601String();
-    final result = await db.rawQuery('''
-      SELECT COALESCE(SUM(amountCents), 0) as total
-      FROM transactions
-      WHERE type = 'expense' AND date >= ? AND date < ?
-    ''', [start, end]);
-    return (result.first['total'] as int?) ?? 0;
+    final list = await getForMonth(year, month);
+    return list
+        .where((t) => t.type == TransactionType.expense)
+        .fold<int>(0, (s, t) => s + t.amountCents);
   }
 
-  /// Daily income + expense totals for a month (for charts).
-  Future<List<Map<String, dynamic>>> getDailyTotals(
+  /// Single call — returns income and expense totals for a month.
+  Future<({int incomeCents, int expenseCents})> getMonthSummary(
       int year, int month) async {
-    final db = await _db.database;
-    final start = DateTime(year, month).toIso8601String();
-    final end = DateTime(year, month + 1).toIso8601String();
-    return db.rawQuery('''
-      SELECT 
-        SUBSTR(date, 1, 10) as day,
-        type,
-        COALESCE(SUM(amountCents), 0) as total
-      FROM transactions
-      WHERE date >= ? AND date < ?
-      GROUP BY day, type
-      ORDER BY day ASC
-    ''', [start, end]);
+    final list = await getForMonth(year, month);
+    final income = list
+        .where((t) => t.type == TransactionType.income)
+        .fold<int>(0, (s, t) => s + t.amountCents);
+    final expense = list
+        .where((t) => t.type == TransactionType.expense)
+        .fold<int>(0, (s, t) => s + t.amountCents);
+    return (incomeCents: income, expenseCents: expense);
+  }
+
+  Future<List<Map<String, dynamic>>> getDailyTotals(int year, int month) async {
+    final json = await _api.get('/api/dashboard?year=$year&month=$month');
+    final rows = (json['chartData'] as List?) ?? const [];
+    return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 }

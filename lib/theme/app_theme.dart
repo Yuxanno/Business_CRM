@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 import 'app_spacing.dart';
 
@@ -12,18 +13,13 @@ class AppTheme {
         systemUiOverlayStyle: SystemUiOverlayStyle.dark,
       );
 
-  static ThemeData get dark => _buildTheme(
-        brightness: Brightness.dark,
-        semantics: AppSemanticColors.dark,
-        systemUiOverlayStyle: SystemUiOverlayStyle.light,
-      );
-
   static ThemeData _buildTheme({
     required Brightness brightness,
     required AppSemanticColors semantics,
     required SystemUiOverlayStyle systemUiOverlayStyle,
   }) {
     final isLight = brightness == Brightness.light;
+    final baseText = GoogleFonts.manropeTextTheme();
 
     final colorScheme = ColorScheme(
       brightness: brightness,
@@ -56,14 +52,45 @@ class AppTheme {
       inversePrimary: isLight ? AppColors.primaryLight : AppColors.primary,
     );
 
+    TextStyle styled(
+      TextStyle? base, {
+      double? size,
+      FontWeight? weight,
+      Color? color,
+      double? letterSpacing,
+      double? height,
+    }) {
+      return (base ?? const TextStyle()).copyWith(
+        fontSize: size,
+        fontWeight: weight,
+        color: color ?? semantics.textPrimary,
+        letterSpacing: letterSpacing,
+        height: height,
+      );
+    }
+
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: semantics.background,
       extensions: [semantics],
-
-      // AppBar
+      textTheme: baseText.copyWith(
+        displayLarge: styled(baseText.displayLarge,
+            size: 30, weight: FontWeight.w800, letterSpacing: -1),
+        titleLarge: styled(baseText.titleLarge,
+            size: 24, weight: FontWeight.w800, letterSpacing: -0.6),
+        titleMedium: styled(baseText.titleMedium,
+            size: 17, weight: FontWeight.w700),
+        titleSmall: styled(baseText.titleSmall,
+            size: 15, weight: FontWeight.w700),
+        bodyLarge: styled(baseText.bodyLarge, size: 15),
+        bodyMedium: styled(baseText.bodyMedium, size: 14),
+        bodySmall: styled(baseText.bodySmall,
+            size: 12, color: semantics.textSecondary),
+        labelSmall: styled(baseText.labelSmall,
+            size: 11, weight: FontWeight.w600, color: semantics.textMuted),
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: semantics.background,
         surfaceTintColor: Colors.transparent,
@@ -71,16 +98,14 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
         systemOverlayStyle: systemUiOverlayStyle,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.manrope(
           color: semantics.textPrimary,
           fontSize: 20,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           letterSpacing: -0.3,
         ),
         iconTheme: IconThemeData(color: semantics.textPrimary),
       ),
-
-      // Cards
       cardTheme: CardThemeData(
         color: semantics.surface,
         surfaceTintColor: Colors.transparent,
@@ -91,8 +116,6 @@ class AppTheme {
         ),
         margin: EdgeInsets.zero,
       ),
-
-      // Input
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: semantics.surfaceSecondary,
@@ -120,118 +143,66 @@ class AppTheme {
         hintStyle: TextStyle(color: semantics.textMuted, fontSize: 14),
         errorStyle: TextStyle(color: semantics.danger, fontSize: 12),
       ),
-
-      // Bottom navigation
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: semantics.surface,
         selectedItemColor: semantics.primary,
         unselectedItemColor: semantics.textMuted,
         elevation: 0,
         type: BottomNavigationBarType.fixed,
-        selectedLabelStyle: const TextStyle(
+        selectedLabelStyle: GoogleFonts.manrope(
           fontSize: 11,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
         ),
-        unselectedLabelStyle: const TextStyle(
+        unselectedLabelStyle: GoogleFonts.manrope(
           fontSize: 11,
-          fontWeight: FontWeight.w400,
+          fontWeight: FontWeight.w500,
         ),
       ),
-
-      // FAB
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: semantics.primary,
+        backgroundColor: AppColors.ink,
         foregroundColor: semantics.onPrimary,
-        elevation: 4,
-        shape: const CircleBorder(),
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
       ),
-
-      // Chip
       chipTheme: ChipThemeData(
         backgroundColor: semantics.surfaceSecondary,
         selectedColor: semantics.primaryContainer,
         labelStyle: TextStyle(
           fontSize: 12,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
           color: semantics.textSecondary,
         ),
         side: BorderSide(color: semantics.border),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.chip),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
         ),
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
           vertical: AppSpacing.xs,
         ),
       ),
-
-      // Divider
       dividerTheme: DividerThemeData(
         color: semantics.divider,
         thickness: 1,
         space: 1,
       ),
-
-      // List tile
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,
           vertical: AppSpacing.sm,
         ),
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.manrope(
           color: semantics.textPrimary,
           fontSize: 14,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
         ),
-        subtitleTextStyle: TextStyle(
+        subtitleTextStyle: GoogleFonts.manrope(
           color: semantics.textSecondary,
           fontSize: 12,
         ),
         iconColor: semantics.textSecondary,
-      ),
-
-      // Text
-      textTheme: TextTheme(
-        displayLarge: TextStyle(
-          color: semantics.textPrimary,
-          fontSize: 30,
-          fontWeight: FontWeight.w700,
-        ),
-        titleLarge: TextStyle(
-          color: semantics.textPrimary,
-          fontSize: 24,
-          fontWeight: FontWeight.w700,
-        ),
-        titleMedium: TextStyle(
-          color: semantics.textPrimary,
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-        ),
-        titleSmall: TextStyle(
-          color: semantics.textPrimary,
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-        ),
-        bodyLarge: TextStyle(
-          color: semantics.textPrimary,
-          fontSize: 15,
-          fontWeight: FontWeight.w400,
-        ),
-        bodyMedium: TextStyle(
-          color: semantics.textPrimary,
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-        ),
-        bodySmall: TextStyle(
-          color: semantics.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-        ),
-        labelSmall: TextStyle(
-          color: semantics.textMuted,
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-        ),
       ),
     );
   }

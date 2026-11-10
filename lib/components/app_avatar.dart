@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
 
 /// Shows initials-based avatar for customers.
 class AppAvatar extends StatelessWidget {
@@ -23,7 +22,7 @@ class AppAvatar extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
@@ -50,12 +49,12 @@ class AppAvatar extends StatelessWidget {
 
   Color _colorForName(String name) {
     const colors = [
-      Color(0xFF6366F1),
-      Color(0xFF3B82F6),
+      Color(0xFF0F766E),
+      Color(0xFF14B8A6),
       Color(0xFF10B981),
       Color(0xFFF59E0B),
       Color(0xFFEF4444),
-      Color(0xFF8B5CF6),
+      Color(0xFF0D9488),
       Color(0xFFEC4899),
       Color(0xFF06B6D4),
     ];

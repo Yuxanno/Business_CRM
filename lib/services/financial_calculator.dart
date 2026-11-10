@@ -7,21 +7,51 @@ class FinancialCalculator {
   /// Returns null if the input is invalid.
   static int? parseAmountToCents(String input) {
     if (input.trim().isEmpty) return null;
-    // Allow comma as decimal separator.
+    // Allow comma as decimal separator and remove spaces.
     final normalized = input.trim().replaceAll(',', '.').replaceAll(' ', '');
     final value = double.tryParse(normalized);
     if (value == null || value < 0) return null;
     return (value * 100).round();
   }
 
-  /// Format integer cents to display string.
-  static String formatCents(int cents, {String currency = 'RUB'}) {
-    final rubles = cents ~/ 100;
-    final kopecks = (cents % 100).abs();
-    if (kopecks == 0) {
-      return '$rubles $currency';
+  /// Format integer with space as thousand separator.
+  /// Example: 1000000 → "1 000 000"
+  static String _formatWithSpaces(int value) {
+    final str = value.abs().toString();
+    final buffer = StringBuffer();
+    int counter = 0;
+    
+    for (int i = str.length - 1; i >= 0; i--) {
+      if (counter > 0 && counter % 3 == 0) {
+        buffer.write(' ');
+      }
+      buffer.write(str[i]);
+      counter++;
     }
-    return '$rubles.${kopecks.toString().padLeft(2, '0')} $currency';
+    
+    final result = buffer.toString().split('').reversed.join('');
+    return value < 0 ? '-$result' : result;
+  }
+
+  /// Format integer cents to display string.
+  /// RUB: без копеек если их нет (1 000 ₽)
+  /// USD/EUR/другие: всегда с центами (1 000.00 $)
+  static String formatCents(int cents, {String currency = 'RUB'}) {
+    final main = cents ~/ 100;
+    final fraction = (cents % 100).abs();
+    
+    final mainFormatted = _formatWithSpaces(main);
+    
+    // Для рублей и тенге показываем копейки только если они есть
+    final hideZeroFraction = currency == 'RUB' || 
+                             currency == 'KZT' || 
+                             currency == 'UZS';
+    
+    if (hideZeroFraction && fraction == 0) {
+      return '$mainFormatted $currency';
+    }
+    
+    return '$mainFormatted.${fraction.toString().padLeft(2, '0')} $currency';
   }
 
   /// Format cents to compact display (e.g. 1 500 000 → 1.5M).

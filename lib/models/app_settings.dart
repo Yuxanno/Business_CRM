@@ -14,7 +14,7 @@ class AppSettings {
   final String ownerName;
   final String currency;   // e.g. 'RUB', 'USD'
   final String locale;     // e.g. 'ru', 'en'
-  final String themeMode;  // 'light' | 'dark' | 'system'
+  final String themeMode; // kept in storage; the app always renders light
   final String dateFormat; // 'dd.MM.yyyy' | 'MM/dd/yyyy'
   final bool isOnboardingDone;
 
@@ -23,7 +23,7 @@ class AppSettings {
         ownerName: '',
         currency: 'RUB',
         locale: 'ru',
-        themeMode: 'system',
+        themeMode: 'light',
         dateFormat: 'dd.MM.yyyy',
         isOnboardingDone: false,
       );
@@ -63,7 +63,7 @@ class AppSettings {
         ownerName: map['ownerName'] as String? ?? '',
         currency: map['currency'] as String? ?? 'RUB',
         locale: map['locale'] as String? ?? 'ru',
-        themeMode: map['themeMode'] as String? ?? 'system',
+        themeMode: map['themeMode'] as String? ?? 'light',
         dateFormat: map['dateFormat'] as String? ?? 'dd.MM.yyyy',
         isOnboardingDone: (map['isOnboardingDone'] as int? ?? 0) == 1,
       );

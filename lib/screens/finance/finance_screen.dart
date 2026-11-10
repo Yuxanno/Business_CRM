@@ -9,12 +9,10 @@ import '../../providers/finance_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/financial_calculator.dart';
 import '../../services/date_helper.dart';
-import '../../components/app_card.dart';
-import '../../components/app_chip.dart';
 import '../../components/app_empty_state.dart';
 import '../../components/app_confirm_sheet.dart';
-import '../../components/category_chart_widget.dart';
-import '../../components/finance_bar_chart.dart';
+import '../../components/app_skeleton.dart';
+import '../../components/app_card.dart';
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -26,7 +24,6 @@ class FinanceScreen extends StatefulWidget {
 class _FinanceScreenState extends State<FinanceScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<Map<String, dynamic>> _chartData = [];
 
   @override
   void initState() {
@@ -46,105 +43,18 @@ class _FinanceScreenState extends State<FinanceScreen>
   Future<void> _loadMonth() async {
     final provider = context.read<FinanceProvider>();
     final now = DateTime.now();
-    await provider.loadMonth(provider.selectedYear != 0 ? provider.selectedYear : now.year,
-        provider.selectedMonth != 0 ? provider.selectedMonth : now.month);
-    final data = await provider.getDailyTotals();
-    if (mounted) setState(() => _chartData = data);
-  }
-
-  Future<void> _reload() async {
-    final provider = context.read<FinanceProvider>();
-    await provider.reload();
-    final data = await provider.getDailyTotals();
-    if (mounted) setState(() => _chartData = data);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final provider = context.watch<FinanceProvider>();
-    final currency = context.watch<SettingsProvider>().currency;
-
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
-        title: const Text('Финансы'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_rounded),
-            onPressed: () => context.go('/finance/new'),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Операции'),
-            Tab(text: 'Доходы'),
-            Tab(text: 'Расходы'),
-          ],
-        ),
-      ),
-      body: Column(
-        children: [
-          // Month navigator
-          _MonthNavigator(
-            year: provider.selectedYear,
-            month: provider.selectedMonth,
-            onPrev: () => _shiftMonth(provider, -1),
-            onNext: () => _shiftMonth(provider, 1),
-          ),
-          // Summary row
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                AppSpacing.xl, 0, AppSpacing.xl, AppSpacing.md),
-            child: _SummaryRow(
-              incomeCents: provider.incomeCents,
-              expenseCents: provider.expenseCents,
-              currency: currency,
-            ),
-          ),
-          // Tab views
-          Expanded(
-            child: provider.isLoading
-                ? Center(
-                    child: CircularProgressIndicator(color: colors.primary))
-                : TabBarView(
-                    controller: _tabController,
-                    children: [
-                      // Tab 0 — All transactions
-                      _TransactionsTab(
-                        provider: provider,
-                        currency: currency,
-                        chartData: _chartData,
-                        onReload: _reload,
-                      ),
-                      // Tab 1 — Income analytics
-                      _AnalyticsTab(
-                        transactions: provider.transactions,
-                        type: TransactionType.income,
-                        currency: currency,
-                        chartData: _chartData,
-                        year: provider.selectedYear,
-                        month: provider.selectedMonth,
-                      ),
-                      // Tab 2 — Expense analytics
-                      _AnalyticsTab(
-                        transactions: provider.transactions,
-                        type: TransactionType.expense,
-                        currency: currency,
-                        chartData: _chartData,
-                        year: provider.selectedYear,
-                        month: provider.selectedMonth,
-                      ),
-                    ],
-                  ),
-          ),
-        ],
-      ),
+    await provider.loadMonth(
+      provider.selectedYear != 0 ? provider.selectedYear : now.year,
+      provider.selectedMonth != 0 ? provider.selectedMonth : now.month,
     );
   }
 
-  Future<void> _shiftMonth(FinanceProvider provider, int delta) async {
+  Future<void> _reload() async {
+    await context.read<FinanceProvider>().reload();
+  }
+
+  Future<void> _shiftMonth(int delta) async {
+    final provider = context.read<FinanceProvider>();
     var month = provider.selectedMonth + delta;
     var year = provider.selectedYear;
     if (month > 12) {
@@ -155,8 +65,333 @@ class _FinanceScreenState extends State<FinanceScreen>
       year--;
     }
     await provider.loadMonth(year, month);
-    final data = await provider.getDailyTotals();
-    if (mounted) setState(() => _chartData = data);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final provider = context.watch<FinanceProvider>();
+    final currency = context.watch<SettingsProvider>().currency;
+
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Compact header ─────────────────────────────────────────────
+            _FinanceHeader(
+              provider: provider,
+              currency: currency,
+              onPrev: () => _shiftMonth(-1),
+              onNext: () => _shiftMonth(1),
+            ),
+            // ── Tabs ───────────────────────────────────────────────────────
+            TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'Операции'),
+                Tab(text: 'Доходы'),
+                Tab(text: 'Расходы'),
+              ],
+            ),
+            // ── Content ────────────────────────────────────────────────────
+            Expanded(
+              child: provider.isLoading
+                  ? const SingleChildScrollView(
+                      padding: EdgeInsets.all(AppSpacing.xl),
+                      child: AppSkeletonList(count: 4),
+                    )
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _TransactionsTab(
+                          provider: provider,
+                          currency: currency,
+                          onReload: _reload,
+                        ),
+                        _FilteredTransactionsTab(
+                          provider: provider,
+                          type: TransactionType.income,
+                          currency: currency,
+                          onReload: _reload,
+                        ),
+                        _FilteredTransactionsTab(
+                          provider: provider,
+                          type: TransactionType.expense,
+                          currency: currency,
+                          onReload: _reload,
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Finance Header (title + month nav + summary) ─────────────────────────────
+
+class _FinanceHeader extends StatelessWidget {
+  const _FinanceHeader({
+    required this.provider,
+    required this.currency,
+    required this.onPrev,
+    required this.onNext,
+  });
+
+  final FinanceProvider provider;
+  final String currency;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final now = DateTime.now();
+    final isCurrentMonth = provider.selectedYear == now.year &&
+        provider.selectedMonth == now.month;
+    final net = provider.incomeCents - provider.expenseCents;
+    final isPositive = net >= 0;
+
+    return Container(
+      color: colors.surface,
+      child: Column(
+        children: [
+          // Title row
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xl, AppSpacing.md, AppSpacing.xl, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Деньги',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                ),
+                // Month navigator — compact inline
+                _MonthPill(
+                  year: provider.selectedYear,
+                  month: provider.selectedMonth,
+                  isCurrentMonth: isCurrentMonth,
+                  onPrev: onPrev,
+                  onNext: onNext,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppSpacing.md),
+
+          // Summary strip — horizontal scroll so it never overflows
+          SizedBox(
+            height: 80,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              children: [
+                _SummaryChip(
+                  label: 'Доходы',
+                  amount: FinancialCalculator.formatCents(
+                      provider.incomeCents, currency: currency),
+                  color: colors.income,
+                  icon: Icons.arrow_downward_rounded,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                _SummaryChip(
+                  label: 'Расходы',
+                  amount: FinancialCalculator.formatCents(
+                      provider.expenseCents, currency: currency),
+                  color: colors.expense,
+                  icon: Icons.arrow_upward_rounded,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                _SummaryChip(
+                  label: isPositive ? 'Прибыль' : 'Убыток',
+                  amount: FinancialCalculator.formatCents(
+                      net.abs(), currency: currency),
+                  color: isPositive ? colors.income : colors.expense,
+                  icon: isPositive
+                      ? Icons.account_balance_outlined
+                      : Icons.trending_down_rounded,
+                  highlight: true,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppSpacing.sm),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Month pill with prev/next ─────────────────────────────────────────────────
+
+class _MonthPill extends StatelessWidget {
+  const _MonthPill({
+    required this.year,
+    required this.month,
+    required this.isCurrentMonth,
+    required this.onPrev,
+    required this.onNext,
+  });
+
+  final int year;
+  final int month;
+  final bool isCurrentMonth;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Container(
+      height: 34,
+      decoration: BoxDecoration(
+        color: colors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(AppRadius.button),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _PillBtn(
+            icon: Icons.chevron_left_rounded,
+            onTap: onPrev,
+            enabled: true,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              DateHelper.formatMonthYear(DateTime(year, month)),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: colors.textPrimary,
+              ),
+            ),
+          ),
+          _PillBtn(
+            icon: Icons.chevron_right_rounded,
+            onTap: onNext,
+            enabled: !isCurrentMonth,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PillBtn extends StatelessWidget {
+  const _PillBtn({
+    required this.icon,
+    required this.onTap,
+    required this.enabled,
+  });
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Icon(
+          icon,
+          size: 18,
+          color: enabled ? colors.textSecondary : colors.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Summary chip ──────────────────────────────────────────────────────────────
+
+class _SummaryChip extends StatelessWidget {
+  const _SummaryChip({
+    required this.label,
+    required this.amount,
+    required this.color,
+    required this.icon,
+    this.highlight = false,
+  });
+
+  final String label;
+  final String amount;
+  final Color color;
+  final IconData icon;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: highlight
+            ? color.withValues(alpha: 0.08)
+            : colors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: highlight ? color.withValues(alpha: 0.25) : colors.border,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 13, color: color),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: colors.textMuted,
+                ),
+              ),
+              Text(
+                amount,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: highlight ? color : colors.textPrimary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -166,13 +401,11 @@ class _TransactionsTab extends StatelessWidget {
   const _TransactionsTab({
     required this.provider,
     required this.currency,
-    required this.chartData,
     required this.onReload,
   });
 
   final FinanceProvider provider;
   final String currency;
-  final List<Map<String, dynamic>> chartData;
   final VoidCallback onReload;
 
   @override
@@ -184,50 +417,21 @@ class _TransactionsTab extends StatelessWidget {
       onRefresh: () async => onReload(),
       child: CustomScrollView(
         slivers: [
-          // Type filter chips
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.xl, 0, AppSpacing.xl, AppSpacing.sm),
-              child: Row(
-                children: [
-                  AppFilterChip(
-                    label: 'Все',
-                    selected: provider.typeFilter == null,
-                    onTap: () => provider.setTypeFilter(null),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  AppFilterChip(
-                    label: 'Доходы',
-                    selected: provider.typeFilter == TransactionType.income,
-                    onTap: () =>
-                        provider.setTypeFilter(TransactionType.income),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  AppFilterChip(
-                    label: 'Расходы',
-                    selected: provider.typeFilter == TransactionType.expense,
-                    onTap: () =>
-                        provider.setTypeFilter(TransactionType.expense),
-                  ),
-                ],
-              ),
-            ),
-          ),
           if (provider.transactions.isEmpty)
             SliverFillRemaining(
               child: AppEmptyState(
                 icon: Icons.receipt_long_outlined,
-                title: 'Нет операций',
-                subtitle: 'Добавьте первый доход или расход',
-                actionLabel: 'Добавить',
-                onAction: () => context.go('/finance/new'),
+                title: 'В этом месяце пусто',
+                subtitle: 'Нажмите + чтобы добавить доход или расход',
+                actionLabel: 'Добавить доход',
+                onAction: () => context.push('/finance/new?type=income'),
               ),
             )
-          else
+          else ...[
+            const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md)),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.xl, 0, AppSpacing.xl, 80),
+                  AppSpacing.xl, 0, AppSpacing.xl, 100),
               sliver: _TransactionSliver(
                 transactions: provider.transactions,
                 currency: currency,
@@ -237,118 +441,96 @@ class _TransactionsTab extends StatelessWidget {
                     title: 'Удалить операцию?',
                     message: 'Это действие нельзя отменить.',
                   );
-                  if (confirm == true) {
+                  if (confirm == true && context.mounted) {
                     await context.read<FinanceProvider>().delete(tx.id);
                   }
                 },
-                onEdit: (tx) => context.go('/finance/edit/${tx.id}'),
+                onEdit: (tx) => context.push('/finance/edit/${tx.id}'),
               ),
             ),
+          ],
         ],
       ),
     );
   }
 }
 
-// ─── Analytics Tab ────────────────────────────────────────────────────────────
+// ─── Filtered Transactions Tab (Доходы / Расходы) ────────────────────────────
 
-class _AnalyticsTab extends StatelessWidget {
-  const _AnalyticsTab({
-    required this.transactions,
+class _FilteredTransactionsTab extends StatelessWidget {
+  const _FilteredTransactionsTab({
+    required this.provider,
     required this.type,
     required this.currency,
-    required this.chartData,
-    required this.year,
-    required this.month,
+    required this.onReload,
   });
 
-  final List<AppTransaction> transactions;
+  final FinanceProvider provider;
   final TransactionType type;
   final String currency;
-  final List<Map<String, dynamic>> chartData;
-  final int year;
-  final int month;
+  final VoidCallback onReload;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final filtered = transactions.where((t) => t.type == type).toList();
+    final filtered = provider.transactions
+        .where((t) => t.type == type)
+        .toList();
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.xl, AppSpacing.md, AppSpacing.xl, 80),
-      children: [
-        // Bar chart
-        if (chartData.isNotEmpty) ...[
-          Text(
-            'График по дням',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: colors.textPrimary,
+    final emptyTitle = type == TransactionType.income
+        ? 'Нет доходов за этот период'
+        : 'Нет расходов за этот период';
+    final newRoute = type == TransactionType.income
+        ? '/finance/new?type=income'
+        : '/finance/new?type=expense';
+    final actionLabel = type == TransactionType.income
+        ? 'Добавить доход'
+        : 'Добавить расход';
+
+    return RefreshIndicator(
+      color: colors.primary,
+      onRefresh: () async => onReload(),
+      child: CustomScrollView(
+        slivers: [
+          if (filtered.isEmpty)
+            SliverFillRemaining(
+              child: AppEmptyState(
+                icon: type == TransactionType.income
+                    ? Icons.arrow_downward_rounded
+                    : Icons.arrow_upward_rounded,
+                title: emptyTitle,
+                subtitle: 'Нажмите + чтобы добавить операцию',
+                actionLabel: actionLabel,
+                onAction: () => context.push(newRoute),
+              ),
+            )
+          else ...[
+            const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md)),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl, 0, AppSpacing.xl, 100),
+              sliver: _TransactionSliver(
+                transactions: filtered,
+                currency: currency,
+                onDelete: (tx) async {
+                  final confirm = await showConfirmSheet(
+                    context: context,
+                    title: 'Удалить операцию?',
+                    message: 'Это действие нельзя отменить.',
+                  );
+                  if (confirm == true && context.mounted) {
+                    await context.read<FinanceProvider>().delete(tx.id);
+                  }
+                },
+                onEdit: (tx) => context.push('/finance/edit/${tx.id}'),
+              ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(AppRadius.card),
-              border: Border.all(color: colors.border),
-            ),
-            child: FinanceBarChart(
-              dailyData: chartData
-                  .where((d) => d['type'] == type.toStoredString())
-                  .toList(),
-              year: year,
-              month: month,
-              currency: currency,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xxl),
+          ],
         ],
-        // Pie chart by category
-        Text(
-          'По категориям',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: colors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: colors.border),
-          ),
-          child: filtered.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(AppSpacing.xxl),
-                  child: Center(
-                    child: Text(
-                      type == TransactionType.income
-                          ? 'Нет доходов за этот период'
-                          : 'Нет расходов за этот период',
-                      style: TextStyle(
-                          fontSize: 13, color: colors.textMuted),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : CategoryChartWidget(
-                  transactions: filtered,
-                  type: type,
-                  currency: currency,
-                ),
-        ),
-      ],
+      ),
     );
   }
 }
-
 // ─── Transaction Sliver (grouped by date) ─────────────────────────────────────
 
 class _TransactionSliver extends StatelessWidget {
@@ -366,7 +548,9 @@ class _TransactionSliver extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Group by date string
+    final colors = context.appColors;
+
+    // Group by date
     final Map<String, List<AppTransaction>> grouped = {};
     for (final tx in transactions) {
       final key = DateHelper.formatDate(tx.date);
@@ -380,30 +564,82 @@ class _TransactionSliver extends StatelessWidget {
           final dateKey = keys[i];
           final txs = grouped[dateKey]!;
 
+          // Day total
+          final dayIncome = txs
+              .where((t) => t.type == TransactionType.income)
+              .fold(0, (s, t) => s + t.amountCents);
+          final dayExpense = txs
+              .where((t) => t.type == TransactionType.expense)
+              .fold(0, (s, t) => s + t.amountCents);
+
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Date header
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                child: Text(
-                  dateKey,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: context.appColors.textMuted,
-                  ),
+                padding: const EdgeInsets.only(
+                    top: AppSpacing.md, bottom: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    Text(
+                      dateKey,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textMuted,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (dayIncome > 0)
+                      Text(
+                        '+${FinancialCalculator.formatCentsCompact(dayIncome)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: colors.income,
+                        ),
+                      ),
+                    if (dayIncome > 0 && dayExpense > 0)
+                      Text(
+                        '  ·  ',
+                        style: TextStyle(
+                            fontSize: 11, color: colors.textMuted),
+                      ),
+                    if (dayExpense > 0)
+                      Text(
+                        '−${FinancialCalculator.formatCentsCompact(dayExpense)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: colors.expense,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              ...txs.map((tx) => Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                    child: _TransactionCard(
-                      tx: tx,
-                      currency: currency,
-                      onDelete: () => onDelete(tx),
-                      onEdit: () => onEdit(tx),
-                    ),
-                  )),
+              // Transactions card
+              AppCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    for (int j = 0; j < txs.length; j++) ...[
+                      if (j > 0)
+                        Divider(
+                          height: 1,
+                          indent: AppSpacing.lg,
+                          endIndent: AppSpacing.lg,
+                          color: colors.divider,
+                        ),
+                      _TransactionTile(
+                        tx: txs[j],
+                        currency: currency,
+                        onDelete: () => onDelete(txs[j]),
+                        onEdit: () => onEdit(txs[j]),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
           );
         },
@@ -413,193 +649,10 @@ class _TransactionSliver extends StatelessWidget {
   }
 }
 
-// ─── Month Navigator ──────────────────────────────────────────────────────────
+// ─── Transaction Tile (inside card) ──────────────────────────────────────────
 
-class _MonthNavigator extends StatelessWidget {
-  const _MonthNavigator({
-    required this.year,
-    required this.month,
-    required this.onPrev,
-    required this.onNext,
-  });
-
-  final int year;
-  final int month;
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final now = DateTime.now();
-    final isCurrentMonth = year == now.year && month == now.month;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.xl, AppSpacing.md, AppSpacing.xl, AppSpacing.md),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          GestureDetector(
-            onTap: onPrev,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: colors.surfaceSecondary,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                border: Border.all(color: colors.border),
-              ),
-              child: Icon(Icons.chevron_left_rounded,
-                  color: colors.textSecondary),
-            ),
-          ),
-          Text(
-            DateHelper.formatMonthYear(DateTime(year, month)),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: colors.textPrimary,
-            ),
-          ),
-          GestureDetector(
-            onTap: isCurrentMonth ? null : onNext,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: isCurrentMonth
-                    ? colors.surfaceSecondary.withOpacity(0.5)
-                    : colors.surfaceSecondary,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                border: Border.all(color: colors.border),
-              ),
-              child: Icon(Icons.chevron_right_rounded,
-                  color: isCurrentMonth
-                      ? colors.textMuted
-                      : colors.textSecondary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Summary Row ──────────────────────────────────────────────────────────────
-
-class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({
-    required this.incomeCents,
-    required this.expenseCents,
-    required this.currency,
-  });
-
-  final int incomeCents;
-  final int expenseCents;
-  final String currency;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final net = incomeCents - expenseCents;
-    final isPositive = net >= 0;
-
-    return Row(
-      children: [
-        Expanded(
-          child: _SummaryTile(
-            label: 'Доходы',
-            value: FinancialCalculator.formatCents(incomeCents,
-                currency: currency),
-            color: colors.income,
-            icon: Icons.trending_up_rounded,
-            bg: colors.incomeBackground,
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: _SummaryTile(
-            label: 'Расходы',
-            value: FinancialCalculator.formatCents(expenseCents,
-                currency: currency),
-            color: colors.expense,
-            icon: Icons.trending_down_rounded,
-            bg: colors.expenseBackground,
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: _SummaryTile(
-            label: isPositive ? 'Прибыль' : 'Убыток',
-            value: FinancialCalculator.formatCents(net.abs(),
-                currency: currency),
-            color: isPositive ? colors.income : colors.expense,
-            icon: isPositive
-                ? Icons.account_balance_outlined
-                : Icons.warning_amber_rounded,
-            bg: isPositive
-                ? colors.incomeBackground
-                : colors.expenseBackground,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SummaryTile extends StatelessWidget {
-  const _SummaryTile({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.icon,
-    required this.bg,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-  final IconData icon;
-  final Color bg;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            label,
-            style: TextStyle(fontSize: 10, color: color.withOpacity(0.7)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Transaction Card ─────────────────────────────────────────────────────────
-
-class _TransactionCard extends StatelessWidget {
-  const _TransactionCard({
+class _TransactionTile extends StatelessWidget {
+  const _TransactionTile({
     required this.tx,
     required this.currency,
     required this.onDelete,
@@ -617,12 +670,18 @@ class _TransactionCard extends StatelessWidget {
     final isIncome = tx.type == TransactionType.income;
     final isLinked = tx.linkedEntityType == 'order_payment' ||
         tx.linkedEntityType == 'debt_payment';
+    final tileColor = isIncome ? colors.income : colors.expense;
+    final sign = isIncome ? '+' : '−';
+    final label = tx.description?.isNotEmpty == true
+        ? tx.description!
+        : _categoryLabel(tx.category) ?? 'Операция';
 
     return Slidable(
       endActionPane: isLinked
           ? null
           : ActionPane(
               motion: const DrawerMotion(),
+              extentRatio: 0.40,
               children: [
                 SlidableAction(
                   onPressed: (_) => onEdit(),
@@ -630,7 +689,6 @@ class _TransactionCard extends StatelessWidget {
                   foregroundColor: Colors.white,
                   icon: Icons.edit_rounded,
                   label: 'Изменить',
-                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 SlidableAction(
                   onPressed: (_) => onDelete(),
@@ -638,81 +696,85 @@ class _TransactionCard extends StatelessWidget {
                   foregroundColor: Colors.white,
                   icon: Icons.delete_outline_rounded,
                   label: 'Удалить',
-                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
               ],
             ),
-      child: AppCard(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: isIncome
-                    ? colors.incomeBackground
-                    : colors.expenseBackground,
-                borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: isLinked ? null : onEdit,
+        borderRadius: BorderRadius.zero,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+          child: Row(
+            children: [
+              // Icon
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: tileColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isIncome
+                      ? Icons.arrow_downward_rounded
+                      : Icons.arrow_upward_rounded,
+                  size: 15,
+                  color: tileColor,
+                ),
               ),
-              child: Icon(
-                isIncome
-                    ? Icons.trending_up_rounded
-                    : Icons.trending_down_rounded,
-                color: isIncome ? colors.income : colors.expense,
-                size: 20,
+              const SizedBox(width: AppSpacing.md),
+              // Title + subtitle
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      isLinked
+                          ? (tx.linkedEntityType == 'order_payment'
+                              ? 'Платёж по заказу'
+                              : 'Связано с долгом')
+                          : DateHelper.relativeDate(tx.date),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: AppSpacing.sm),
+              // Amount
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    tx.description ??
-                        _categoryLabel(tx.category) ??
-                        'Операция',
+                    '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}',
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: colors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      color: tileColor,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  if (tx.category != null && tx.description != null)
-                    Text(
-                      _categoryLabel(tx.category) ?? tx.category!,
-                      style: TextStyle(
-                          fontSize: 11, color: colors.textMuted),
-                    ),
                   if (isLinked)
-                    Row(
-                      children: [
-                        Icon(Icons.link_rounded,
-                            size: 11, color: colors.textMuted),
-                        const SizedBox(width: 2),
-                        Text(
-                          tx.linkedEntityType == 'order_payment'
-                              ? 'Платёж по заказу'
-                              : 'Платёж по долгу',
-                          style: TextStyle(
-                              fontSize: 11, color: colors.textMuted),
-                        ),
-                      ],
-                    ),
+                    Icon(Icons.link_rounded,
+                        size: 12, color: colors.textMuted),
                 ],
               ),
-            ),
-            Text(
-              '${isIncome ? '+' : '-'}${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isIncome ? colors.income : colors.expense,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

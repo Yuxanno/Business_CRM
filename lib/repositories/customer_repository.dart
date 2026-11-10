@@ -1,90 +1,52 @@
 import '../models/customer.dart';
-import '../services/database_service.dart';
+import '../services/api_client.dart';
 
 class CustomerRepository {
-  final _db = DatabaseService.instance;
+  final _api = ApiClient.instance;
 
   Future<List<Customer>> getAll() async {
-    final db = await _db.database;
-    final maps = await db.query('customers', orderBy: 'name ASC');
-    return maps.map(Customer.fromMap).toList();
+    final json = await _api.get('/api/customers?limit=300');
+    final items = (json['items'] as List?) ?? const [];
+    return items
+        .map((e) => Customer.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   Future<Customer?> getById(String id) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'customers',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    if (maps.isEmpty) return null;
-    return Customer.fromMap(maps.first);
+    try {
+      final json = await _api.get('/api/customers/$id');
+      return Customer.fromMap(Map<String, dynamic>.from(json as Map));
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
   Future<void> insert(Customer customer) async {
-    final db = await _db.database;
-    await db.insert('customers', customer.toMap());
+    await _api.post('/api/customers', customer.toMap());
   }
 
   Future<void> update(Customer customer) async {
-    final db = await _db.database;
-    await db.update(
-      'customers',
-      customer.toMap(),
-      where: 'id = ?',
-      whereArgs: [customer.id],
-    );
+    await _api.put('/api/customers/${customer.id}', customer.toMap());
   }
 
   Future<void> delete(String id) async {
-    final db = await _db.database;
-    await db.delete('customers', where: 'id = ?', whereArgs: [id]);
+    await _api.delete('/api/customers/$id');
   }
 
   Future<List<Customer>> search(String query) async {
-    final db = await _db.database;
-    final q = '%${query.toLowerCase()}%';
-    final maps = await db.query(
-      'customers',
-      where: 'LOWER(name) LIKE ? OR phone LIKE ?',
-      whereArgs: [q, q],
-      orderBy: 'name ASC',
-    );
-    return maps.map(Customer.fromMap).toList();
+    final json = await _api.get('/api/customers?q=${Uri.encodeQueryComponent(query)}');
+    final items = (json['items'] as List?) ?? const [];
+    return items
+        .map((e) => Customer.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
-  /// Increment aggregated stats after a payment.
-  Future<void> addPayment(String customerId, int amountCents) async {
-    final db = await _db.database;
-    await db.rawUpdate('''
-      UPDATE customers 
-      SET totalReceivedCents = totalReceivedCents + ?
-      WHERE id = ?
-    ''', [amountCents, customerId]);
-  }
+  /// Aggregates are updated by the API when orders/payments change.
+  Future<void> addPayment(String customerId, int amountCents) async {}
 
-  /// Called when an order is created for a customer.
-  Future<void> addOrder(String customerId, int orderAmountCents) async {
-    final db = await _db.database;
-    await db.rawUpdate('''
-      UPDATE customers 
-      SET totalOrdersAmountCents = totalOrdersAmountCents + ?,
-          totalOrdersCount = totalOrdersCount + 1
-      WHERE id = ?
-    ''', [orderAmountCents, customerId]);
-  }
+  Future<void> addOrder(String customerId, int orderAmountCents) async {}
 
-  /// Called when an order is cancelled/deleted to rollback stats.
   Future<void> removeOrder(
-      String customerId, int orderAmountCents, int receivedCents) async {
-    final db = await _db.database;
-    await db.rawUpdate('''
-      UPDATE customers 
-      SET totalOrdersAmountCents = MAX(0, totalOrdersAmountCents - ?),
-          totalReceivedCents = MAX(0, totalReceivedCents - ?),
-          totalOrdersCount = MAX(0, totalOrdersCount - 1)
-      WHERE id = ?
-    ''', [orderAmountCents, receivedCents, customerId]);
-  }
+      String customerId, int orderAmountCents, int receivedCents) async {}
 }

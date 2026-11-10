@@ -5,14 +5,15 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // ─── Brand — Indigo ───────────────────────────────────────────────────────
-  static const Color primary = Color(0xFF6366F1);
-  static const Color primaryDark = Color(0xFF4F46E5);
-  static const Color primaryDeep = Color(0xFF4338CA);
-  static const Color primaryLight = Color(0xFF818CF8);
-  static const Color primarySubtle = Color(0xFFEEF2FF);
-  static const Color primaryContainer = Color(0xFFE0E7FF);
+  // ─── Brand — Deep Teal Ink ────────────────────────────────────────────────
+  static const Color primary = Color(0xFF0F766E);
+  static const Color primaryDark = Color(0xFF0D5F59);
+  static const Color primaryDeep = Color(0xFF134E4A);
+  static const Color primaryLight = Color(0xFF14B8A6);
+  static const Color primarySubtle = Color(0xFFF0FDFA);
+  static const Color primaryContainer = Color(0xFFCCFBF1);
   static const Color onPrimary = Color(0xFFFFFFFF);
+  static const Color ink = Color(0xFF111827);
 
   // ─── Semantic — Financial ─────────────────────────────────────────────────
   static const Color income = Color(0xFF10B981);
@@ -44,28 +45,15 @@ class AppColors {
   static const Color slate800 = Color(0xFF1E293B);
 
   // ─── Light Theme ──────────────────────────────────────────────────────────
-  static const Color lightBackground = Color(0xFFF7F8FC);
+  static const Color lightBackground = Color(0xFFF3F7F6);
   static const Color lightSurface = Color(0xFFFFFFFF);
-  static const Color lightSurfaceSecondary = Color(0xFFF1F3F9);
+  static const Color lightSurfaceSecondary = Color(0xFFE8F0EE);
   static const Color lightSurfaceElevated = Color(0xFFFFFFFF);
-  static const Color lightTextPrimary = Color(0xFF181A25);
-  static const Color lightTextSecondary = Color(0xFF667085);
-  static const Color lightTextMuted = Color(0xFF98A2B3);
-  static const Color lightBorder = Color(0xFFE5E7EB);
-  static const Color lightDivider = Color(0xFFEEF0F4);
-
-  // ─── Dark Theme ───────────────────────────────────────────────────────────
-  static const Color darkBackground = Color(0xFF101116);
-  static const Color darkSurface = Color(0xFF191B25);
-  static const Color darkSurfaceSecondary = Color(0xFF222530);
-  static const Color darkSurfaceElevated = Color(0xFF292C39);
-  static const Color darkPrimary = Color(0xFF818CF8);
-  static const Color darkPrimaryContainer = Color(0xFF292B50);
-  static const Color darkTextPrimary = Color(0xFFF3F4F6);
-  static const Color darkTextSecondary = Color(0xFFA1A1B2);
-  static const Color darkTextMuted = Color(0xFF74788B);
-  static const Color darkBorder = Color(0xFF303341);
-  static const Color darkDivider = Color(0xFF282B36);
+  static const Color lightTextPrimary = Color(0xFF111827);
+  static const Color lightTextSecondary = Color(0xFF4B5563);
+  static const Color lightTextMuted = Color(0xFF9CA3AF);
+  static const Color lightBorder = Color(0xFFD5E0DC);
+  static const Color lightDivider = Color(0xFFE5EDEA);
 }
 
 /// Semantic colors exposed via ThemeExtension — use these in widgets.
@@ -132,28 +120,6 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
     warning: AppColors.warning,
     warningBackground: AppColors.warningBackground,
     danger: AppColors.danger,
-  );
-
-  static const dark = AppSemanticColors(
-    background: AppColors.darkBackground,
-    surface: AppColors.darkSurface,
-    surfaceSecondary: AppColors.darkSurfaceSecondary,
-    surfaceElevated: AppColors.darkSurfaceElevated,
-    primary: AppColors.darkPrimary,
-    primaryContainer: AppColors.darkPrimaryContainer,
-    onPrimary: AppColors.onPrimary,
-    textPrimary: AppColors.darkTextPrimary,
-    textSecondary: AppColors.darkTextSecondary,
-    textMuted: AppColors.darkTextMuted,
-    border: AppColors.darkBorder,
-    divider: AppColors.darkDivider,
-    income: AppColors.incomeLight,
-    incomeBackground: Color(0xFF064E3B),
-    expense: AppColors.expenseLight,
-    expenseBackground: Color(0xFF4C0519),
-    warning: AppColors.warningLight,
-    warningBackground: Color(0xFF451A03),
-    danger: AppColors.dangerLight,
   );
 
   @override

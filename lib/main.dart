@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'l10n/app_localizations.dart';
 import 'theme/app_theme.dart';
 import 'providers/settings_provider.dart';
 import 'providers/customer_provider.dart';
@@ -39,18 +40,32 @@ void main() async {
   );
 }
 
-class BusinessManagerApp extends StatelessWidget {
+class BusinessManagerApp extends StatefulWidget {
   const BusinessManagerApp({super.key});
+
+  @override
+  State<BusinessManagerApp> createState() => _BusinessManagerAppState();
+}
+
+class _BusinessManagerAppState extends State<BusinessManagerApp> {
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = context.read<SettingsProvider>();
+    _router = AppRouter.router(settings.isOnboardingDone);
+  }
+
+  @override
+  void dispose() {
+    _router.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-
-    final themeMode = switch (settings.themeMode) {
-      'light' => ThemeMode.light,
-      'dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
-    };
 
     final locale = settings.locale == 'en'
         ? const Locale('en')
@@ -60,16 +75,11 @@ class BusinessManagerApp extends StatelessWidget {
       title: 'Business Manager',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: themeMode,
+      themeMode: ThemeMode.light,
       locale: locale,
-      supportedLocales: const [Locale('ru'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      routerConfig: AppRouter.router(settings.isOnboardingDone),
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      routerConfig: _router,
     );
   }
 }

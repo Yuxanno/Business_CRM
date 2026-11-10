@@ -73,8 +73,8 @@ class Customer {
         notes: map['notes'] as String?,
         createdAt: DateTime.parse(map['createdAt'] as String),
         totalOrdersAmountCents:
-            map['totalOrdersAmountCents'] as int? ?? 0,
-        totalReceivedCents: map['totalReceivedCents'] as int? ?? 0,
-        totalOrdersCount: map['totalOrdersCount'] as int? ?? 0,
+            (map['totalOrdersAmountCents'] as num?)?.toInt() ?? 0,
+        totalReceivedCents: (map['totalReceivedCents'] as num?)?.toInt() ?? 0,
+        totalOrdersCount: (map['totalOrdersCount'] as num?)?.toInt() ?? 0,
       );
 }

@@ -14,9 +14,18 @@ class SettingsProvider extends ChangeNotifier {
 
   String get currency => _settings.currency;
   String get locale => _settings.locale;
-  String get themeMode => _settings.themeMode;
 
   Future<void> init() async {
+    _isLoading = true;
+    notifyListeners();
+    _settings = await _repo.load();
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> reload() async {
+    _isLoading = true;
+    notifyListeners();
     _settings = await _repo.load();
     _isLoading = false;
     notifyListeners();
@@ -47,21 +56,33 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setTheme(String themeMode) async {
-    _settings = _settings.copyWith(themeMode: themeMode);
-    await _repo.save(_settings);
-    notifyListeners();
-  }
-
   Future<void> setLocale(String locale) async {
     _settings = _settings.copyWith(locale: locale);
     await _repo.save(_settings);
+    
+    // Sync to server
+    try {
+      await _repo.syncToServer(locale: locale);
+    } catch (e) {
+      // If server sync fails, settings are still saved locally
+      print('Failed to sync locale to server: $e');
+    }
+    
     notifyListeners();
   }
 
   Future<void> setCurrency(String currency) async {
     _settings = _settings.copyWith(currency: currency);
     await _repo.save(_settings);
+    
+    // Sync to server
+    try {
+      await _repo.syncToServer(currency: currency);
+    } catch (e) {
+      // If server sync fails, settings are still saved locally
+      print('Failed to sync currency to server: $e');
+    }
+    
     notifyListeners();
   }
 }

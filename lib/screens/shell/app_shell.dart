@@ -4,16 +4,9 @@ import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 
-class AppShell extends StatefulWidget {
+class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.child});
   final Widget child;
-
-  @override
-  State<AppShell> createState() => _AppShellState();
-}
-
-class _AppShellState extends State<AppShell> {
-  bool _fabExpanded = false;
 
   static const _tabs = ['/home', '/finance', '/orders', '/profile'];
 
@@ -24,46 +17,53 @@ class _AppShellState extends State<AppShell> {
     return 0;
   }
 
-  void _onTabTap(int index) {
-    setState(() => _fabExpanded = false);
-    context.go(_tabs[index]);
-  }
+  /// Plus only on lists where this page can create a record.
+  String? _createKind(String path) => switch (path) {
+        '/finance' => 'finance',
+        '/orders' => 'order',
+        '/profile/customers' => 'customer',
+        '/profile/debts' => 'debt',
+        _ => null,
+      };
 
-  void _toggleFab() {
+  Future<void> _onCreate(BuildContext context, String kind) async {
     HapticFeedback.lightImpact();
-    setState(() => _fabExpanded = !_fabExpanded);
+    switch (kind) {
+      case 'finance':
+        // Сразу открываем форму транзакции (без промежуточного выбора)
+        context.push('/finance/new');
+      case 'order':
+        context.push('/orders/new');
+      case 'customer':
+        context.push('/profile/customers/new');
+      case 'debt':
+        context.push('/profile/debts/new');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final location = GoRouterState.of(context).uri.toString();
-    final currentIndex = _locationToIndex(location);
+    final path = GoRouterState.of(context).uri.path;
+    final currentIndex = _locationToIndex(path);
+    final createKind = _createKind(path);
 
     return Scaffold(
-      body: Stack(
-        children: [
-          widget.child,
-          // Dim overlay when FAB expanded
-          if (_fabExpanded)
-            GestureDetector(
-              onTap: () => setState(() => _fabExpanded = false),
-              child: Container(color: Colors.black.withOpacity(0.4)),
-            ),
-          // FAB quick actions
-          if (_fabExpanded)
-            Positioned(
-              bottom: 100 + MediaQuery.of(context).padding.bottom,
-              right: AppSpacing.xl,
-              child: _QuickActionsMenu(
-                onAction: (action) {
-                  setState(() => _fabExpanded = false);
-                  _handleQuickAction(action);
-                },
+      body: child,
+      floatingActionButton: createKind == null
+          ? null
+          : FloatingActionButton(
+              heroTag: 'shell-create',
+              onPressed: () => _onCreate(context, createKind),
+              backgroundColor: AppColors.ink,
+              foregroundColor: colors.onPrimary,
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
+              child: const Icon(Icons.add_rounded, size: 28),
             ),
-        ],
-      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: colors.surface,
@@ -80,65 +80,28 @@ class _AppShellState extends State<AppShell> {
                   activeIcon: Icons.home_rounded,
                   label: 'Главная',
                   selected: currentIndex == 0,
-                  onTap: () => _onTabTap(0),
+                  onTap: () => context.go(_tabs[0]),
                 ),
                 _NavItem(
                   icon: Icons.bar_chart_outlined,
                   activeIcon: Icons.bar_chart_rounded,
-                  label: 'Финансы',
+                  label: 'Деньги',
                   selected: currentIndex == 1,
-                  onTap: () => _onTabTap(1),
-                ),
-                // Central FAB placeholder
-                Expanded(
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: _toggleFab,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: _fabExpanded
-                              ? colors.expenseBackground
-                              : colors.primary,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors.primary.withOpacity(0.3),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: AnimatedRotation(
-                          turns: _fabExpanded ? 0.125 : 0,
-                          duration: const Duration(milliseconds: 200),
-                          child: Icon(
-                            Icons.add_rounded,
-                            color: _fabExpanded
-                                ? colors.expense
-                                : colors.onPrimary,
-                            size: 28,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  onTap: () => context.go(_tabs[1]),
                 ),
                 _NavItem(
                   icon: Icons.receipt_long_outlined,
                   activeIcon: Icons.receipt_long_rounded,
                   label: 'Заказы',
                   selected: currentIndex == 2,
-                  onTap: () => _onTabTap(2),
+                  onTap: () => context.go(_tabs[2]),
                 ),
                 _NavItem(
                   icon: Icons.person_outline_rounded,
                   activeIcon: Icons.person_rounded,
-                  label: 'Профиль',
+                  label: 'Ещё',
                   selected: currentIndex == 3,
-                  onTap: () => _onTabTap(3),
+                  onTap: () => context.go(_tabs[3]),
                 ),
               ],
             ),
@@ -146,26 +109,6 @@ class _AppShellState extends State<AppShell> {
         ),
       ),
     );
-  }
-
-  void _handleQuickAction(String action) {
-    switch (action) {
-      case 'income':
-        context.go('/finance/new');
-        break;
-      case 'expense':
-        context.go('/finance/new');
-        break;
-      case 'order':
-        context.go('/orders/new');
-        break;
-      case 'debt':
-        context.go('/profile/debts/new');
-        break;
-      case 'customer':
-        context.go('/profile/customers/new');
-        break;
-    }
   }
 }
 
@@ -204,84 +147,14 @@ class _NavItem extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                fontSize: 11,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 color: selected ? colors.primary : colors.textMuted,
               ),
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _QuickActionsMenu extends StatelessWidget {
-  const _QuickActionsMenu({required this.onAction});
-  final ValueChanged<String> onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-
-    final actions = [
-      (icon: Icons.trending_up_rounded, label: 'Доход', key: 'income', color: colors.income),
-      (icon: Icons.trending_down_rounded, label: 'Расход', key: 'expense', color: colors.expense),
-      (icon: Icons.receipt_long_rounded, label: 'Заказ', key: 'order', color: colors.primary),
-      (icon: Icons.account_balance_wallet_outlined, label: 'Долг', key: 'debt', color: colors.warning),
-      (icon: Icons.person_add_rounded, label: 'Клиент', key: 'customer', color: AppColors.slate500),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: actions.map((a) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md,
-                  vertical: AppSpacing.xs,
-                ),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Text(
-                  a.label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              GestureDetector(
-                onTap: () => onAction(a.key),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: a.color.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(a.icon, color: a.color, size: 20),
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
     );
   }
 }

@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/transaction.dart';
-import '../repositories/transaction_repository.dart';
-import '../repositories/order_repository.dart';
-import '../repositories/customer_repository.dart';
-import '../repositories/debt_repository.dart';
+import '../services/api_client.dart';
 
 /// Aggregates all data needed for the Home dashboard.
 class DashboardProvider extends ChangeNotifier {
-  final _txRepo = TransactionRepository();
-  final _orderRepo = OrderRepository();
-  final _customerRepo = CustomerRepository();
-  final _debtRepo = DebtRepository();
+  final _api = ApiClient.instance;
 
   int _year = DateTime.now().year;
   int _month = DateTime.now().month;
@@ -47,25 +41,21 @@ class DashboardProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final results = await Future.wait([
-        _txRepo.getTotalIncomeCents(_year, _month),
-        _txRepo.getTotalExpenseCents(_year, _month),
-        _orderRepo.getActiveCount(),
-        _debtRepo.getTotalReceivableCents(),
-        _txRepo.getDailyTotals(_year, _month),
-      ]);
-
-      _incomeCents = results[0] as int;
-      _expenseCents = results[1] as int;
-      _activeOrdersCount = results[2] as int;
-      _receivableCents = results[3] as int;
-      _chartData = results[4] as List<Map<String, dynamic>>;
-
-      final customers = await _customerRepo.getAll();
-      _totalCustomersCount = customers.length;
-
-      final allTx = await _txRepo.getAll();
-      _recentActivity = allTx.take(15).toList();
+      final json = await _api.get('/api/dashboard?year=$_year&month=$_month');
+      _incomeCents = (json['incomeCents'] as num?)?.toInt() ?? 0;
+      _expenseCents = (json['expenseCents'] as num?)?.toInt() ?? 0;
+      _activeOrdersCount = (json['activeOrdersCount'] as num?)?.toInt() ?? 0;
+      _receivableCents = (json['receivableCents'] as num?)?.toInt() ?? 0;
+      _totalCustomersCount =
+          (json['totalCustomersCount'] as num?)?.toInt() ?? 0;
+      final chart = (json['chartData'] as List?) ?? const [];
+      _chartData =
+          chart.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final recent = (json['recent'] as List?) ?? const [];
+      _recentActivity = recent
+          .map((e) =>
+              AppTransaction.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
     } catch (e) {
       _error = e.toString();
     } finally {

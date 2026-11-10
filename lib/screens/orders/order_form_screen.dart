@@ -11,7 +11,11 @@ import '../../providers/order_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/financial_calculator.dart';
-import '../../components/app_button.dart';
+import '../../components/app_modal_sheet.dart';
+import '../../components/app_avatar.dart';
+import '../../components/form_widgets.dart';
+
+// ─── Route wrapper ────────────────────────────────────────────────────────────
 
 class OrderFormScreen extends StatefulWidget {
   const OrderFormScreen({super.key, this.orderId});
@@ -22,6 +26,43 @@ class OrderFormScreen extends StatefulWidget {
 }
 
 class _OrderFormScreenState extends State<OrderFormScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _open());
+  }
+
+  Future<void> _open() async {
+    await showAppModal<void>(
+      context: context,
+      child: _OrderFormSheet(orderId: widget.orderId),
+    );
+    if (mounted) {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/orders');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(backgroundColor: Colors.transparent);
+}
+
+// ─── Sheet ────────────────────────────────────────────────────────────────────
+
+class _OrderFormSheet extends StatefulWidget {
+  const _OrderFormSheet({this.orderId});
+  final String? orderId;
+
+  @override
+  State<_OrderFormSheet> createState() => _OrderFormSheetState();
+}
+
+class _OrderFormSheetState extends State<_OrderFormSheet>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _titleCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
@@ -33,30 +74,45 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   OrderStatus _status = OrderStatus.newOrder;
   bool _loading = false;
   bool _isEdit = false;
+  bool _dataLoading = false;
   Order? _existingOrder;
+  bool _customerError = false;
+
+  late AnimationController _stagger;
 
   @override
   void initState() {
     super.initState();
+    _stagger = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600));
+    _stagger.forward();
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await context.read<CustomerProvider>().load();
+      final customerProvider = context.read<CustomerProvider>();
+      final orderProvider = context.read<OrderProvider>();
+      await customerProvider.load();
       if (widget.orderId != null) {
         _isEdit = true;
-        final order =
-            await context.read<OrderProvider>().getById(widget.orderId!);
+        if (mounted) setState(() => _dataLoading = true);
+        final order = await orderProvider.getById(widget.orderId!);
         if (order != null && mounted) {
-          _existingOrder = order;
-          _titleCtrl.text = order.title;
-          _priceCtrl.text =
-              (order.totalPriceCents / 100).toStringAsFixed(2);
-          _descCtrl.text = order.description ?? '';
-          _notesCtrl.text = order.notes ?? '';
-          _dueDate = order.dueDate;
-          _status = order.status;
-          final customer = await context
-              .read<CustomerProvider>()
-              .getById(order.customerId);
-          if (mounted) setState(() => _selectedCustomer = customer);
+          final customer = await customerProvider.getById(order.customerId);
+          if (mounted) {
+            setState(() {
+              _existingOrder = order;
+              _titleCtrl.text = order.title;
+              _priceCtrl.text =
+                  (order.totalPriceCents / 100).toStringAsFixed(2);
+              _descCtrl.text = order.description ?? '';
+              _notesCtrl.text = order.notes ?? '';
+              _dueDate = order.dueDate;
+              _status = order.status;
+              _selectedCustomer = customer;
+              _dataLoading = false;
+            });
+          }
+        } else if (mounted) {
+          setState(() => _dataLoading = false);
         }
       }
     });
@@ -64,6 +120,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
 
   @override
   void dispose() {
+    _stagger.dispose();
     _titleCtrl.dispose();
     _priceCtrl.dispose();
     _descCtrl.dispose();
@@ -72,66 +129,58 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
     if (_selectedCustomer == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выберите клиента')),
-      );
+      HapticFeedback.vibrate();
+      setState(() => _customerError = true);
       return;
     }
-
-    final price =
-        FinancialCalculator.parseAmountToCents(_priceCtrl.text);
-    if (price == null || price <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите корректную сумму')),
-      );
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
+    final price = FinancialCalculator.parseAmountToCents(_priceCtrl.text);
+    if (price == null || price <= 0) return;
 
     setState(() => _loading = true);
-
     try {
       if (_isEdit && _existingOrder != null) {
-        final updated = _existingOrder!.copyWith(
-          title: _titleCtrl.text.trim(),
-          customerId: _selectedCustomer!.id,
-          customerName: _selectedCustomer!.name,
-          totalPriceCents: price,
-          description: _descCtrl.text.trim().isNotEmpty
-              ? _descCtrl.text.trim()
-              : null,
-          notes: _notesCtrl.text.trim().isNotEmpty
-              ? _notesCtrl.text.trim()
-              : null,
-          dueDate: _dueDate,
-          status: _status,
-          updatedAt: DateTime.now(),
-        );
-        await context.read<OrderProvider>().update(updated);
+        await context.read<OrderProvider>().update(
+              _existingOrder!.copyWith(
+                title: _titleCtrl.text.trim(),
+                customerId: _selectedCustomer!.id,
+                customerName: _selectedCustomer!.name,
+                totalPriceCents: price,
+                description: _descCtrl.text.trim().isNotEmpty
+                    ? _descCtrl.text.trim()
+                    : null,
+                notes: _notesCtrl.text.trim().isNotEmpty
+                    ? _notesCtrl.text.trim()
+                    : null,
+                dueDate: _dueDate,
+                status: _status,
+                updatedAt: DateTime.now(),
+              ),
+            );
       } else {
-        const uuid = Uuid();
-        final order = Order(
-          id: uuid.v4(),
-          title: _titleCtrl.text.trim(),
-          customerId: _selectedCustomer!.id,
-          customerName: _selectedCustomer!.name,
-          totalPriceCents: price,
-          receivedCents: 0,
-          status: _status,
-          createdAt: DateTime.now(),
-          description: _descCtrl.text.trim().isNotEmpty
-              ? _descCtrl.text.trim()
-              : null,
-          notes: _notesCtrl.text.trim().isNotEmpty
-              ? _notesCtrl.text.trim()
-              : null,
-          dueDate: _dueDate,
-        );
-        await context.read<OrderProvider>().add(order);
+        await context.read<OrderProvider>().add(
+              Order(
+                id: const Uuid().v4(),
+                title: _titleCtrl.text.trim(),
+                customerId: _selectedCustomer!.id,
+                customerName: _selectedCustomer!.name,
+                totalPriceCents: price,
+                receivedCents: 0,
+                status: _status,
+                createdAt: DateTime.now(),
+                description: _descCtrl.text.trim().isNotEmpty
+                    ? _descCtrl.text.trim()
+                    : null,
+                notes: _notesCtrl.text.trim().isNotEmpty
+                    ? _notesCtrl.text.trim()
+                    : null,
+                dueDate: _dueDate,
+              ),
+            );
       }
       HapticFeedback.mediumImpact();
-      if (mounted) context.go('/orders');
+      if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -140,284 +189,510 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final customers = context.watch<CustomerProvider>().customers;
     final currency = context.watch<SettingsProvider>().currency;
+    final customers = context.watch<CustomerProvider>().customers;
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Редактировать заказ' : 'Новый заказ'),
-      ),
-      body: Form(
+    return AppModalSheet(
+      title: _isEdit ? 'Редактировать заказ' : 'Новый заказ',
+      subtitle: _isEdit
+          ? 'Сумма и срок обновятся в карточке заказа'
+          : 'Укажите клиента, сумму и срок. Статус можно сменить в карточке.',
+      headerIcon: Icons.receipt_long_rounded,
+      headerColor: colors.primary,
+      body: _dataLoading
+          ? SizedBox(
+              height: 260,
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: colors.primary,
+                  strokeWidth: 2.5,
+                ),
+              ),
+            )
+          : Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.xl),
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.lg,
+            AppSpacing.xl,
+            AppSpacing.xl + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          shrinkWrap: true,
           children: [
-            _label(context, 'Название заказа *'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: _titleCtrl,
-              style: TextStyle(color: colors.textPrimary),
-              decoration: const InputDecoration(
-                  hintText: 'Например: Разработка логотипа'),
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Обязательное поле' : null,
+            // Title
+            FormStaggerItem(
+              animation: _stagger,
+              index: 0,
+              child: SheetField(
+                label: 'НАЗВАНИЕ ЗАКАЗА',
+                required: true,
+                child: FormTextField(
+                  controller: _titleCtrl,
+                  hint: 'Например: Разработка логотипа',
+                  autofocus: !_isEdit,
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? 'Введите название'
+                      : null,
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _label(context, 'Клиент *'),
-            const SizedBox(height: AppSpacing.xs),
-            _CustomerDropdown(
-              customers: customers,
-              selected: _selectedCustomer,
-              onChanged: (c) => setState(() => _selectedCustomer = c),
-              onAddNew: () async {
-                await context.push('/profile/customers/new');
-                await context.read<CustomerProvider>().load();
-              },
+
+            // Customer picker
+            FormStaggerItem(
+              animation: _stagger,
+              index: 1,
+              child: SheetField(
+                label: 'КЛИЕНТ',
+                required: true,
+                child: _CustomerTile(
+                  customers: customers,
+                  selected: _selectedCustomer,
+                  hasError: _customerError,
+                  onChanged: (c) =>
+                      setState(() {
+                        _selectedCustomer = c;
+                        _customerError = false;
+                      }),
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _label(context, 'Стоимость ($currency) *'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: _priceCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-              ],
-              style: TextStyle(color: colors.textPrimary),
-              decoration: const InputDecoration(hintText: '0.00'),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Обязательное поле';
-                final cents =
-                    FinancialCalculator.parseAmountToCents(v);
-                if (cents == null || cents <= 0) {
-                  return 'Введите корректную сумму';
-                }
-                return null;
-              },
+
+            // Price
+            FormStaggerItem(
+              animation: _stagger,
+              index: 2,
+              child: SheetField(
+                label: 'СТОИМОСТЬ ($currency)',
+                required: true,
+                child: FormAmountField(
+                  controller: _priceCtrl,
+                  accentColor: colors.primary,
+                  prefix: '₽',
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _label(context, 'Описание'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: _descCtrl,
-              maxLines: 3,
-              style: TextStyle(color: colors.textPrimary),
-              decoration:
-                  const InputDecoration(hintText: 'Описание работы...'),
+
+            // Description
+            FormStaggerItem(
+              animation: _stagger,
+              index: 3,
+              child: SheetField(
+                label: 'ОПИСАНИЕ РАБОТЫ',
+                child: FormTextField(
+                  controller: _descCtrl,
+                  hint: 'Что нужно сделать...',
+                  maxLines: 3,
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _label(context, 'Дедлайн'),
-            const SizedBox(height: AppSpacing.xs),
-            _DatePicker(
-              value: _dueDate,
-              onChanged: (d) => setState(() => _dueDate = d),
+
+            // Deadline
+            FormStaggerItem(
+              animation: _stagger,
+              index: 4,
+              child: SheetField(
+                label: 'ДЕДЛАЙН',
+                child: FormDatePicker(
+                  value: _dueDate,
+                  onChanged: (d) => setState(() => _dueDate = d),
+                  accentColor: colors.warning,
+                  nullable: true,
+                ),
+              ),
             ),
+
+            // Status (edit only)
             if (_isEdit) ...[
               const SizedBox(height: AppSpacing.lg),
-              _label(context, 'Статус'),
-              const SizedBox(height: AppSpacing.xs),
-              _StatusDropdown(
-                value: _status,
-                onChanged: (s) => setState(() => _status = s),
+              FormStaggerItem(
+                animation: _stagger,
+                index: 5,
+                child: SheetField(
+                  label: 'СТАТУС',
+                  child: _StatusChips(
+                    value: _status,
+                    onChanged: (s) => setState(() => _status = s),
+                  ),
+                ),
               ),
             ],
+
             const SizedBox(height: AppSpacing.lg),
-            _label(context, 'Заметки'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: _notesCtrl,
-              maxLines: 2,
-              style: TextStyle(color: colors.textPrimary),
-              decoration:
-                  const InputDecoration(hintText: 'Внутренние заметки...'),
+
+            // Notes
+            FormStaggerItem(
+              animation: _stagger,
+              index: 6,
+              child: SheetField(
+                label: 'ЗАМЕТКИ',
+                child: FormTextField(
+                  controller: _notesCtrl,
+                  hint: 'Внутренние заметки...',
+                  maxLines: 2,
+                ),
+              ),
             ),
-            const SizedBox(height: AppSpacing.xxxl),
-            AppButton(
-              label: _isEdit ? 'Сохранить' : 'Создать заказ',
-              onPressed: _save,
-              isLoading: _loading,
-              icon: Icons.check_rounded,
+            const SizedBox(height: AppSpacing.xxl),
+
+            FormStaggerItem(
+              animation: _stagger,
+              index: 7,
+              child: FormSubmitButton(
+                label: _isEdit ? 'Сохранить' : 'Создать заказ',
+                accentColor: colors.primary,
+                isLoading: _loading,
+                onPressed: _save,
+                icon: _isEdit ? Icons.check_rounded : Icons.add_rounded,
+              ),
             ),
-            const SizedBox(height: 80),
+            const SizedBox(height: AppSpacing.sm),
           ],
         ),
       ),
     );
   }
-
-  Widget _label(BuildContext context, String text) {
-    final colors = context.appColors;
-    return Text(text,
-        style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: colors.textSecondary));
-  }
 }
 
-class _CustomerDropdown extends StatelessWidget {
-  const _CustomerDropdown({
+// ─── Customer tile / picker ───────────────────────────────────────────────────
+
+class _CustomerTile extends StatelessWidget {
+  const _CustomerTile({
     required this.customers,
     required this.selected,
+    required this.hasError,
     required this.onChanged,
-    required this.onAddNew,
   });
 
   final List<Customer> customers;
   final Customer? selected;
+  final bool hasError;
   final ValueChanged<Customer?> onChanged;
-  final VoidCallback onAddNew;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: 2),
-      decoration: BoxDecoration(
-        color: colors.surfaceSecondary,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: colors.border),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<Customer>(
-          value: selected,
-          isExpanded: true,
-          hint: Text('Выберите клиента',
-              style: TextStyle(color: colors.textMuted, fontSize: 14)),
-          dropdownColor: colors.surface,
-          style: TextStyle(color: colors.textPrimary, fontSize: 14),
-          onChanged: onChanged,
-          items: [
-            ...customers.map((c) => DropdownMenuItem(
-                  value: c,
-                  child: Text(c.name),
-                )),
-            DropdownMenuItem(
-              value: null,
-              enabled: false,
-              child: TextButton.icon(
-                onPressed: onAddNew,
-                icon: Icon(Icons.add_rounded,
-                    size: 16, color: colors.primary),
-                label: Text('Добавить клиента',
-                    style:
-                        TextStyle(fontSize: 13, color: colors.primary)),
+    // Show selected customer as card
+    if (selected != null) {
+      return GestureDetector(
+        onTap: () => _openPicker(context),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: 60,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: colors.primaryContainer,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border:
+                Border.all(color: colors.primary, width: 1.5),
+          ),
+          child: Row(
+            children: [
+              AppAvatar(name: selected!.name, size: 34),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      selected!.name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    if (selected!.phone != null)
+                      Text(
+                        selected!.phone!,
+                        style: TextStyle(
+                            fontSize: 11, color: colors.textSecondary),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              Icon(Icons.swap_horiz_rounded,
+                  size: 18, color: colors.primary),
+            ],
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _DatePicker extends StatelessWidget {
-  const _DatePicker({required this.value, required this.onChanged});
-  final DateTime? value;
-  final ValueChanged<DateTime?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
+      );
+    }
 
     return GestureDetector(
-      onTap: () async {
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: value ?? DateTime.now().add(const Duration(days: 7)),
-          firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
-          builder: (ctx, child) => Theme(
-            data: Theme.of(ctx).copyWith(
-              colorScheme:
-                  Theme.of(ctx).colorScheme.copyWith(primary: colors.primary),
-            ),
-            child: child!,
-          ),
-        );
-        if (picked != null) onChanged(picked);
-      },
-      child: Container(
-        height: 48,
+      onTap: () => _openPicker(context),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: 52,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         decoration: BoxDecoration(
-          color: colors.surfaceSecondary,
+          color: hasError
+              ? colors.expenseBackground
+              : colors.surfaceSecondary,
           borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: colors.border),
+          border: Border.all(
+            color: hasError ? colors.expense : colors.border,
+            width: hasError ? 1.5 : 1,
+          ),
         ),
         child: Row(
           children: [
-            Icon(Icons.calendar_today_outlined,
-                size: 16, color: colors.textMuted),
-            const SizedBox(width: AppSpacing.sm),
+            Icon(Icons.person_search_rounded,
+                size: 18,
+                color: hasError ? colors.expense : colors.textMuted),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Text(
-                value != null
-                    ? '${value!.day.toString().padLeft(2, '0')}.${value!.month.toString().padLeft(2, '0')}.${value!.year}'
-                    : 'Выберите дату',
+                hasError ? 'Выберите клиента ↑' : 'Выберите клиента',
                 style: TextStyle(
-                    fontSize: 14,
-                    color: value != null
-                        ? colors.textPrimary
-                        : colors.textMuted),
+                  fontSize: 14,
+                  color: hasError ? colors.expense : colors.textMuted,
+                  fontWeight:
+                      hasError ? FontWeight.w500 : FontWeight.w400,
+                ),
               ),
             ),
-            if (value != null)
-              GestureDetector(
-                onTap: () => onChanged(null),
-                child:
-                    Icon(Icons.close_rounded, size: 16, color: colors.textMuted),
-              ),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: colors.textMuted),
           ],
         ),
       ),
     );
   }
+
+  void _openPicker(BuildContext context) {
+    final colors = context.appColors;
+    showModalBottomSheet<Customer>(
+      context: context,
+      backgroundColor: colors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet)),
+      ),
+      builder: (_) => _CustomerPickerSheet(
+        customers: customers,
+        selected: selected,
+        onPick: (c) {
+          onChanged(c);
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+  }
 }
 
-class _StatusDropdown extends StatelessWidget {
-  const _StatusDropdown({required this.value, required this.onChanged});
-  final OrderStatus value;
-  final ValueChanged<OrderStatus> onChanged;
+class _CustomerPickerSheet extends StatefulWidget {
+  const _CustomerPickerSheet({
+    required this.customers,
+    required this.selected,
+    required this.onPick,
+  });
+
+  final List<Customer> customers;
+  final Customer? selected;
+  final ValueChanged<Customer> onPick;
+
+  @override
+  State<_CustomerPickerSheet> createState() => _CustomerPickerSheetState();
+}
+
+class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
+  String _q = '';
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final filtered = widget.customers
+        .where((c) => c.name.toLowerCase().contains(_q.toLowerCase()))
+        .toList();
 
-    final labels = {
-      OrderStatus.newOrder: 'Новый',
-      OrderStatus.inProgress: 'В работе',
-      OrderStatus.completed: 'Завершён',
-      OrderStatus.cancelled: 'Отменён',
-    };
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 6),
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: colors.border,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xl, AppSpacing.sm, AppSpacing.xl, AppSpacing.sm),
+            child: Text(
+              'Выберите клиента',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary),
+            ),
+          ),
+          // Search
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            child: TextField(
+              onChanged: (v) => setState(() => _q = v),
+              style: TextStyle(color: colors.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Поиск...',
+                hintStyle: TextStyle(color: colors.textMuted),
+                prefixIcon: Icon(Icons.search_rounded,
+                    size: 18, color: colors.textMuted),
+                filled: true,
+                fillColor: colors.surfaceSecondary,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: BorderSide(color: colors.border)),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: BorderSide(color: colors.border)),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide:
+                        BorderSide(color: colors.primary, width: 1.5)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                isDense: true,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.38),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.xl, vertical: AppSpacing.sm),
+              children: filtered.map((c) {
+                final sel = widget.selected?.id == c.id;
+                return ListTile(
+                  leading: AppAvatar(name: c.name, size: 38),
+                  title: Text(c.name,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight:
+                              sel ? FontWeight.w600 : FontWeight.w400,
+                          color: colors.textPrimary)),
+                  subtitle: c.phone != null
+                      ? Text(c.phone!,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: colors.textSecondary))
+                      : null,
+                  trailing: sel
+                      ? Icon(Icons.check_circle_rounded,
+                          color: colors.primary, size: 20)
+                      : null,
+                  onTap: () => widget.onPick(c),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm),
+                  shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppRadius.md)),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+        ],
+      ),
+    );
+  }
+}
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: 2),
-      decoration: BoxDecoration(
-        color: colors.surfaceSecondary,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: colors.border),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<OrderStatus>(
-          value: value,
-          isExpanded: true,
-          dropdownColor: colors.surface,
-          style: TextStyle(color: colors.textPrimary, fontSize: 14),
-          onChanged: (s) => s != null ? onChanged(s) : null,
-          items: OrderStatus.values
-              .map((s) => DropdownMenuItem(
-                    value: s,
-                    child: Text(labels[s]!),
-                  ))
-              .toList(),
-        ),
-      ),
+// ─── Status chips ─────────────────────────────────────────────────────────────
+
+class _StatusChips extends StatelessWidget {
+  const _StatusChips({required this.value, required this.onChanged});
+  final OrderStatus value;
+  final ValueChanged<OrderStatus> onChanged;
+
+  static const _items = {
+    OrderStatus.newOrder: (
+      'Новый',
+      Icons.fiber_new_rounded,
+      Color(0xFF0F766E)
+    ),
+    OrderStatus.inProgress: (
+      'В работе',
+      Icons.play_circle_rounded,
+      Color(0xFF14B8A6)
+    ),
+    OrderStatus.completed: (
+      'Завершён',
+      Icons.check_circle_rounded,
+      Color(0xFF10B981)
+    ),
+    OrderStatus.cancelled: (
+      'Отменён',
+      Icons.cancel_rounded,
+      Color(0xFF94A3B8)
+    ),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: OrderStatus.values.map((s) {
+        final item = _items[s]!;
+        final sel = value == s;
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onChanged(s);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: sel
+                  ? item.$3.withValues(alpha: 0.12)
+                  : colors.surfaceSecondary,
+              borderRadius: BorderRadius.circular(AppRadius.chip),
+              border: Border.all(
+                  color: sel ? item.$3 : colors.border,
+                  width: sel ? 1.5 : 1),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(item.$2,
+                    size: 14,
+                    color: sel ? item.$3 : colors.textMuted),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  item.$1,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight:
+                        sel ? FontWeight.w600 : FontWeight.w400,
+                    color: sel ? item.$3 : colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

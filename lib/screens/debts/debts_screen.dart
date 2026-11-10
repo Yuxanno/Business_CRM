@@ -13,6 +13,7 @@ import '../../components/app_card.dart';
 import '../../components/app_status_badge.dart';
 import '../../components/app_empty_state.dart';
 import '../../components/app_confirm_sheet.dart';
+import '../../components/app_skeleton.dart';
 
 class DebtsScreen extends StatefulWidget {
   const DebtsScreen({super.key});
@@ -24,6 +25,9 @@ class DebtsScreen extends StatefulWidget {
 class _DebtsScreenState extends State<DebtsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final _searchCtrl = TextEditingController();
+  bool _searchActive = false;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -37,7 +41,18 @@ class _DebtsScreenState extends State<DebtsScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _searchCtrl.dispose();
     super.dispose();
+  }
+
+  List<Debt> _filtered(List<Debt> list) {
+    if (_searchQuery.isEmpty) return list;
+    final q = _searchQuery.toLowerCase();
+    return list
+        .where((d) =>
+            d.personName.toLowerCase().contains(q) ||
+            (d.description?.toLowerCase().contains(q) ?? false))
+        .toList();
   }
 
   @override
@@ -46,72 +61,158 @@ class _DebtsScreenState extends State<DebtsScreen>
     final provider = context.watch<DebtProvider>();
     final currency = context.watch<SettingsProvider>().currency;
 
+    final receivables = _filtered(provider.receivables);
+    final payables = _filtered(provider.payables);
+
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
-        title: const Text('Долги'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_rounded),
-            onPressed: () => context.go('/profile/debts/new'),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Мне должны'),
-                  if (provider.receivables.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    _TabBadge(count: provider.receivables.length,
-                        color: colors.income),
-                  ],
-                ],
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Header ────────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, 0),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                transitionBuilder: (child, anim) =>
+                    FadeTransition(opacity: anim, child: child),
+                child: _searchActive
+                    ? _SearchField(
+                        key: const ValueKey('search'),
+                        controller: _searchCtrl,
+                        hint: 'Поиск по имени или описанию…',
+                        onChanged: (v) =>
+                            setState(() => _searchQuery = v),
+                        onClose: () {
+                          setState(() {
+                            _searchActive = false;
+                            _searchQuery = '';
+                          });
+                          _searchCtrl.clear();
+                        },
+                      )
+                    : Row(
+                        key: const ValueKey('title'),
+                        children: [
+                          GestureDetector(
+                            onTap: () => context.go('/profile'),
+                            child: Icon(Icons.arrow_back_rounded,
+                                size: 22, color: colors.textPrimary),
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Text(
+                              'Долги',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          // Search button
+                          GestureDetector(
+                            onTap: () =>
+                                setState(() => _searchActive = true),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: colors.surfaceSecondary,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: colors.border),
+                              ),
+                              child: Icon(Icons.search_rounded,
+                                  size: 18,
+                                  color: colors.textSecondary),
+                            ),
+                          ),
+                        ],
+                      ),
               ),
             ),
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+
+            // ── Tabs ──────────────────────────────────────────────────────
+            const SizedBox(height: AppSpacing.sm),
+            TabBar(
+              controller: _tabController,
+              tabs: [
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Мне должны'),
+                      if (provider.receivables.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        _TabBadge(
+                          count: provider.receivables.length,
+                          color: colors.income,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Я должен'),
+                      if (provider.payables.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        _TabBadge(
+                          count: provider.payables.length,
+                          color: colors.expense,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            // ── Content ───────────────────────────────────────────────────
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
                 children: [
-                  const Text('Я должен'),
-                  if (provider.payables.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    _TabBadge(count: provider.payables.length,
-                        color: colors.expense),
-                  ],
+                  _DebtList(
+                    debts: receivables,
+                    isLoading: provider.isLoading,
+                    currency: currency,
+                    emptyTitle: _searchQuery.isNotEmpty
+                        ? 'Ничего не найдено'
+                        : 'Никто вам не должен',
+                    emptySubtitle: _searchQuery.isNotEmpty
+                        ? 'Попробуйте другой запрос'
+                        : 'Добавьте запись о деньгах, которые вам должны',
+                    direction: DebtDirection.receivable,
+                  ),
+                  _DebtList(
+                    debts: payables,
+                    isLoading: provider.isLoading,
+                    currency: currency,
+                    emptyTitle: _searchQuery.isNotEmpty
+                        ? 'Ничего не найдено'
+                        : 'Вы никому не должны',
+                    emptySubtitle: _searchQuery.isNotEmpty
+                        ? 'Попробуйте другой запрос'
+                        : 'Добавьте запись о деньгах, которые вы должны',
+                    direction: DebtDirection.payable,
+                  ),
                 ],
               ),
             ),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _DebtList(
-            debts: provider.receivables,
-            isLoading: provider.isLoading,
-            currency: currency,
-            emptyTitle: 'Никто вам не должен',
-            emptySubtitle: 'Добавьте запись о деньгах, которые вам должны',
-            direction: DebtDirection.receivable,
-          ),
-          _DebtList(
-            debts: provider.payables,
-            isLoading: provider.isLoading,
-            currency: currency,
-            emptyTitle: 'Вы никому не должны',
-            emptySubtitle: 'Добавьте запись о деньгах, которые вы должны',
-            direction: DebtDirection.payable,
-          ),
-        ],
-      ),
     );
   }
 }
+
+// ─── Tab badge ────────────────────────────────────────────────────────────────
 
 class _TabBadge extends StatelessWidget {
   const _TabBadge({required this.count, required this.color});
@@ -123,7 +224,7 @@ class _TabBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
@@ -134,6 +235,102 @@ class _TabBadge extends StatelessWidget {
     );
   }
 }
+
+// ─── Search field ─────────────────────────────────────────────────────────────
+
+class _SearchField extends StatefulWidget {
+  const _SearchField({
+    super.key,
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+    required this.onClose,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClose;
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_rebuild);
+  }
+
+  void _rebuild() => setState(() {});
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_rebuild);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final hasText = widget.controller.text.isNotEmpty;
+
+    return SizedBox(
+      height: 36,
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: widget.onClose,
+            child: Icon(Icons.arrow_back_rounded,
+                size: 22, color: colors.textPrimary),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: TextField(
+              controller: widget.controller,
+              onChanged: widget.onChanged,
+              autofocus: true,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: colors.textPrimary,
+              ),
+              decoration: InputDecoration(
+                hintText: widget.hint,
+                hintStyle: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  color: colors.textMuted,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                isDense: true,
+                filled: false,
+              ),
+            ),
+          ),
+          if (hasText)
+            GestureDetector(
+              onTap: () {
+                widget.controller.clear();
+                widget.onChanged('');
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(left: AppSpacing.sm),
+                child: Icon(Icons.close_rounded,
+                    size: 18, color: colors.textMuted),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Debt list tab ────────────────────────────────────────────────────────────
 
 class _DebtList extends StatelessWidget {
   const _DebtList({
@@ -157,7 +354,10 @@ class _DebtList extends StatelessWidget {
     final colors = context.appColors;
 
     if (isLoading) {
-      return Center(child: CircularProgressIndicator(color: colors.primary));
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+        child: const AppSkeletonList(),
+      );
     }
 
     if (debts.isEmpty) {
@@ -166,45 +366,47 @@ class _DebtList extends StatelessWidget {
         title: emptyTitle,
         subtitle: emptySubtitle,
         actionLabel: 'Добавить',
-        onAction: () => context.go('/profile/debts/new'),
+        onAction: () => context.push('/profile/debts/new'),
       );
     }
 
-    // Summary header
     final activeDebts = debts.where((d) => !d.isFullyPaid).toList();
-    final totalCents = activeDebts.fold<int>(
-        0, (sum, d) => sum + d.remainingCents);
+    final totalCents =
+        activeDebts.fold<int>(0, (s, d) => s + d.remainingCents);
 
     return RefreshIndicator(
       color: colors.primary,
       onRefresh: () => context.read<DebtProvider>().load(),
-      child: ListView(
-        padding:
-            const EdgeInsets.fromLTRB(AppSpacing.xl, 0, AppSpacing.xl, 80),
-        children: [
-          if (activeDebts.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.lg),
-            _SummaryBanner(
-              totalCents: totalCents,
-              count: activeDebts.length,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl, AppSpacing.md, AppSpacing.xl, 100),
+        itemCount: debts.length + (activeDebts.isNotEmpty ? 1 : 0),
+        itemBuilder: (ctx, i) {
+          // First item = summary banner
+          if (activeDebts.isNotEmpty && i == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: _SummaryBanner(
+                totalCents: totalCents,
+                count: activeDebts.length,
+                currency: currency,
+                direction: direction,
+              ),
+            );
+          }
+          final debt = debts[activeDebts.isNotEmpty ? i - 1 : i];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: _DebtCard(
+              debt: debt,
               currency: currency,
-              direction: direction,
+              onTap: () => ctx.go('/profile/debts/${debt.id}'),
+              onEdit: () =>
+                  ctx.push('/profile/debts/${debt.id}/edit'),
+              onDelete: () => _confirmDelete(ctx, debt),
             ),
-          ],
-          const SizedBox(height: AppSpacing.md),
-          ...debts.map((debt) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: _DebtCard(
-                  debt: debt,
-                  currency: currency,
-                  onTap: () =>
-                      context.go('/profile/debts/${debt.id}'),
-                  onEdit: () =>
-                      context.go('/profile/debts/${debt.id}/edit'),
-                  onDelete: () => _confirmDelete(context, debt),
-                ),
-              )),
-        ],
+          );
+        },
       ),
     );
   }
@@ -215,11 +417,13 @@ class _DebtList extends StatelessWidget {
       title: 'Удалить долг?',
       message: 'История платежей будет удалена.',
     );
-    if (confirm == true) {
+    if (confirm == true && context.mounted) {
       await context.read<DebtProvider>().delete(debt.id);
     }
   }
 }
+
+// ─── Summary banner ───────────────────────────────────────────────────────────
 
 class _SummaryBanner extends StatelessWidget {
   const _SummaryBanner({
@@ -239,22 +443,43 @@ class _SummaryBanner extends StatelessWidget {
     final colors = context.appColors;
     final isReceivable = direction == DebtDirection.receivable;
     final color = isReceivable ? colors.income : colors.expense;
-    final bg = isReceivable ? colors.incomeBackground : colors.expenseBackground;
 
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg, vertical: AppSpacing.md),
       decoration: BoxDecoration(
-        color: bg,
+        gradient: LinearGradient(
+          colors: isReceivable
+              ? [const Color(0xFF065F46), const Color(0xFF047857)]
+              : [const Color(0xFF9F1239), const Color(0xFFBE123C)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(
-            isReceivable
-                ? Icons.trending_up_rounded
-                : Icons.trending_down_rounded,
-            color: color,
-            size: 24,
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isReceivable
+                  ? Icons.arrow_downward_rounded
+                  : Icons.arrow_upward_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -262,30 +487,52 @@ class _SummaryBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isReceivable ? 'Итого к получению' : 'Итого к выплате',
-                  style: TextStyle(fontSize: 12, color: color),
+                  isReceivable
+                      ? 'Итого к получению'
+                      : 'Итого к выплате',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.70),
+                  ),
                 ),
+                const SizedBox(height: 2),
                 Text(
                   FinancialCalculator.formatCents(totalCents,
                       currency: currency),
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: color,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: -0.5,
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
             ),
           ),
-          Text(
-            '$count активных',
-            style: TextStyle(fontSize: 12, color: color),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '$count акт.',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 }
+
+// ─── Debt card ────────────────────────────────────────────────────────────────
 
 class _DebtCard extends StatelessWidget {
   const _DebtCard({
@@ -305,10 +552,18 @@ class _DebtCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final isReceivable =
+        debt.direction == DebtDirection.receivable;
+    final status = debt.computedStatus;
+    final accentColor = isReceivable ? colors.income : colors.expense;
+    final progress =
+        (debt.paidAmountCents / debt.originalAmountCents).clamp(0.0, 1.0);
+    final isOverdue = status == DebtStatus.overdue;
 
     return Slidable(
       endActionPane: ActionPane(
         motion: const DrawerMotion(),
+        extentRatio: 0.40,
         children: [
           SlidableAction(
             onPressed: (_) => onEdit(),
@@ -316,7 +571,6 @@ class _DebtCard extends StatelessWidget {
             foregroundColor: Colors.white,
             icon: Icons.edit_rounded,
             label: 'Изменить',
-            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           SlidableAction(
             onPressed: (_) => onDelete(),
@@ -324,97 +578,176 @@ class _DebtCard extends StatelessWidget {
             foregroundColor: Colors.white,
             icon: Icons.delete_outline_rounded,
             label: 'Удалить',
-            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
         ],
       ),
       child: AppCard(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: const EdgeInsets.all(AppSpacing.md),
         onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Top row ─────────────────────────────────────────────────
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
+                // Avatar
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  alignment: Alignment.center,
                   child: Text(
-                    debt.personName,
+                    debt.personName.isNotEmpty
+                        ? debt.personName[0].toUpperCase()
+                        : '?',
                     style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: colors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: accentColor,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                AppStatusBadge.debt(debt.computedStatus, context),
+                const SizedBox(width: AppSpacing.md),
+                // Name + description
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        debt.personName,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
+                          letterSpacing: -0.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (debt.description != null &&
+                          debt.description!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          debt.description!,
+                          style: TextStyle(
+                              fontSize: 12, color: colors.textMuted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                AppStatusBadge.debt(status, context),
               ],
             ),
-            if (debt.description != null) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                debt.description!,
-                style: TextStyle(
-                    fontSize: 12, color: colors.textSecondary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+
             const SizedBox(height: AppSpacing.md),
-            // Progress bar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: (debt.paidAmountCents / debt.originalAmountCents)
-                    .clamp(0.0, 1.0),
-                backgroundColor: colors.surfaceSecondary,
-                valueColor: AlwaysStoppedAnimation(
-                  debt.isFullyPaid ? colors.income : colors.warning,
-                ),
-                minHeight: 4,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
+
+            // ── Progress ─────────────────────────────────────────────────
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    debt.isFullyPaid
-                        ? 'Погашен'
-                        : 'Остаток: ${FinancialCalculator.formatCents(debt.remainingCents, currency: currency)}',
-                    style: TextStyle(
-                        fontSize: 11, color: colors.textMuted),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: colors.surfaceSecondary,
+                          valueColor: AlwaysStoppedAnimation(
+                            debt.isFullyPaid
+                                ? colors.income
+                                : isOverdue
+                                    ? colors.expense
+                                    : accentColor,
+                          ),
+                          minHeight: 5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        debt.isFullyPaid
+                            ? 'Погашен полностью'
+                            : 'Оплачено ${FinancialCalculator.formatCentsCompact(debt.paidAmountCents, currency: currency)} из ${FinancialCalculator.formatCentsCompact(debt.originalAmountCents, currency: currency)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: debt.isFullyPaid
+                              ? colors.income
+                              : colors.textMuted,
+                          fontWeight: debt.isFullyPaid
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  FinancialCalculator.formatCents(
-                      debt.originalAmountCents, currency: currency),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
+                const SizedBox(width: AppSpacing.md),
+                // Remaining amount
+                if (!debt.isFullyPaid)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        FinancialCalculator.formatCents(
+                            debt.remainingCents,
+                            currency: currency),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: isOverdue
+                              ? colors.expense
+                              : accentColor,
+                          letterSpacing: -0.3,
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ],
+                        ),
+                      ),
+                      Text(
+                        'осталось',
+                        style: TextStyle(
+                            fontSize: 10, color: colors.textMuted),
+                      ),
+                    ],
                   ),
-                ),
               ],
             ),
-            if (debt.dueDate != null) ...[
-              const SizedBox(height: AppSpacing.xs),
+
+            // ── Due date ─────────────────────────────────────────────────
+            if (debt.dueDate != null && !debt.isFullyPaid) ...[
+              const SizedBox(height: AppSpacing.sm),
               Row(
                 children: [
-                  Icon(Icons.calendar_today_outlined,
-                      size: 11,
-                      color: debt.computedStatus == DebtStatus.overdue
-                          ? colors.expense
-                          : colors.textMuted),
+                  Icon(
+                    isOverdue
+                        ? Icons.warning_amber_rounded
+                        : Icons.calendar_today_outlined,
+                    size: 12,
+                    color:
+                        isOverdue ? colors.expense : colors.textMuted,
+                  ),
                   const SizedBox(width: 4),
                   Text(
-                    'До ${DateHelper.formatDate(debt.dueDate!)}',
+                    isOverdue
+                        ? 'Просрочен · ${DateHelper.formatDate(debt.dueDate!)}'
+                        : 'до ${DateHelper.formatDate(debt.dueDate!)}',
                     style: TextStyle(
-                        fontSize: 11,
-                        color: debt.computedStatus == DebtStatus.overdue
-                            ? colors.expense
-                            : colors.textMuted),
+                      fontSize: 11,
+                      fontWeight: isOverdue
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color: isOverdue
+                          ? colors.expense
+                          : colors.textMuted,
+                    ),
                   ),
                 ],
               ),

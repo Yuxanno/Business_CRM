@@ -7,7 +7,10 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../models/customer.dart';
 import '../../providers/customer_provider.dart';
-import '../../components/app_button.dart';
+import '../../components/app_modal_sheet.dart';
+import '../../components/form_widgets.dart';
+
+// ─── Route wrapper ────────────────────────────────────────────────────────────
 
 class CustomerFormScreen extends StatefulWidget {
   const CustomerFormScreen({super.key, this.customerId});
@@ -18,6 +21,43 @@ class CustomerFormScreen extends StatefulWidget {
 }
 
 class _CustomerFormScreenState extends State<CustomerFormScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _open());
+  }
+
+  Future<void> _open() async {
+    await showAppModal<void>(
+      context: context,
+      child: _CustomerFormSheet(customerId: widget.customerId),
+    );
+    if (mounted) {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/profile/customers');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(backgroundColor: Colors.transparent);
+}
+
+// ─── Sheet ────────────────────────────────────────────────────────────────────
+
+class _CustomerFormSheet extends StatefulWidget {
+  const _CustomerFormSheet({this.customerId});
+  final String? customerId;
+
+  @override
+  State<_CustomerFormSheet> createState() => _CustomerFormSheetState();
+}
+
+class _CustomerFormSheetState extends State<_CustomerFormSheet>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -28,9 +68,15 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   bool _isEdit = false;
   Customer? _existing;
 
+  late AnimationController _stagger;
+
   @override
   void initState() {
     super.initState();
+    _stagger = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _stagger.forward();
+
     if (widget.customerId != null) {
       _isEdit = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -38,12 +84,13 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
             .read<CustomerProvider>()
             .getById(widget.customerId!);
         if (c != null && mounted) {
-          _existing = c;
-          _nameCtrl.text = c.name;
-          _phoneCtrl.text = c.phone ?? '';
-          _emailCtrl.text = c.email ?? '';
-          _notesCtrl.text = c.notes ?? '';
-          setState(() {});
+          setState(() {
+            _existing = c;
+            _nameCtrl.text = c.name;
+            _phoneCtrl.text = c.phone ?? '';
+            _emailCtrl.text = c.email ?? '';
+            _notesCtrl.text = c.notes ?? '';
+          });
         }
       });
     }
@@ -51,6 +98,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
 
   @override
   void dispose() {
+    _stagger.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
@@ -63,39 +111,40 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     setState(() => _loading = true);
     try {
       if (_isEdit && _existing != null) {
-        final updated = _existing!.copyWith(
-          name: _nameCtrl.text.trim(),
-          phone: _phoneCtrl.text.trim().isNotEmpty
-              ? _phoneCtrl.text.trim()
-              : null,
-          email: _emailCtrl.text.trim().isNotEmpty
-              ? _emailCtrl.text.trim()
-              : null,
-          notes: _notesCtrl.text.trim().isNotEmpty
-              ? _notesCtrl.text.trim()
-              : null,
-        );
-        await context.read<CustomerProvider>().update(updated);
+        await context.read<CustomerProvider>().update(
+              _existing!.copyWith(
+                name: _nameCtrl.text.trim(),
+                phone: _phoneCtrl.text.trim().isNotEmpty
+                    ? _phoneCtrl.text.trim()
+                    : null,
+                email: _emailCtrl.text.trim().isNotEmpty
+                    ? _emailCtrl.text.trim()
+                    : null,
+                notes: _notesCtrl.text.trim().isNotEmpty
+                    ? _notesCtrl.text.trim()
+                    : null,
+              ),
+            );
       } else {
-        const uuid = Uuid();
-        final customer = Customer(
-          id: uuid.v4(),
-          name: _nameCtrl.text.trim(),
-          phone: _phoneCtrl.text.trim().isNotEmpty
-              ? _phoneCtrl.text.trim()
-              : null,
-          email: _emailCtrl.text.trim().isNotEmpty
-              ? _emailCtrl.text.trim()
-              : null,
-          notes: _notesCtrl.text.trim().isNotEmpty
-              ? _notesCtrl.text.trim()
-              : null,
-          createdAt: DateTime.now(),
-        );
-        await context.read<CustomerProvider>().add(customer);
+        await context.read<CustomerProvider>().add(
+              Customer(
+                id: const Uuid().v4(),
+                name: _nameCtrl.text.trim(),
+                phone: _phoneCtrl.text.trim().isNotEmpty
+                    ? _phoneCtrl.text.trim()
+                    : null,
+                email: _emailCtrl.text.trim().isNotEmpty
+                    ? _emailCtrl.text.trim()
+                    : null,
+                notes: _notesCtrl.text.trim().isNotEmpty
+                    ? _notesCtrl.text.trim()
+                    : null,
+                createdAt: DateTime.now(),
+              ),
+            );
       }
       HapticFeedback.mediumImpact();
-      if (mounted) context.go('/profile/customers');
+      if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -105,82 +154,106 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Редактировать клиента' : 'Новый клиент'),
-      ),
+    return AppModalSheet(
+      title: _isEdit ? 'Редактировать клиента' : 'Новый клиент',
+      subtitle: _isEdit
+          ? 'Имя и контакты обновятся в заказах этого клиента'
+          : 'Имя нужно, чтобы привязать заказы и долги. Телефон можно добавить сразу.',
+      headerIcon: Icons.person_add_rounded,
+      headerColor: colors.primary,
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.xl),
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.lg,
+            AppSpacing.xl,
+            AppSpacing.xl + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          shrinkWrap: true,
           children: [
-            _label(context, 'Имя клиента *'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: _nameCtrl,
-              style: TextStyle(color: colors.textPrimary),
-              decoration: const InputDecoration(hintText: 'Иванов Иван'),
-              textCapitalization: TextCapitalization.words,
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Обязательное поле' : null,
+            FormStaggerItem(
+              animation: _stagger,
+              index: 0,
+              child: SheetField(
+                label: 'ИМЯ КЛИЕНТА',
+                required: true,
+                child: FormTextField(
+                  controller: _nameCtrl,
+                  hint: 'Иванов Иван',
+                  textCapitalization: TextCapitalization.words,
+                  autofocus: !_isEdit,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Введите имя' : null,
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _label(context, 'Телефон'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: _phoneCtrl,
-              style: TextStyle(color: colors.textPrimary),
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(hintText: '+7 900 000-00-00'),
+
+            FormStaggerItem(
+              animation: _stagger,
+              index: 1,
+              child: SheetField(
+                label: 'ТЕЛЕФОН',
+                child: FormTextField(
+                  controller: _phoneCtrl,
+                  hint: '+7 900 000-00-00',
+                  keyboardType: TextInputType.phone,
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _label(context, 'Email'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: _emailCtrl,
-              style: TextStyle(color: colors.textPrimary),
-              keyboardType: TextInputType.emailAddress,
-              decoration:
-                  const InputDecoration(hintText: 'example@mail.ru'),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return null;
-                if (!v.contains('@') || !v.contains('.')) {
-                  return 'Введите корректный email';
-                }
-                return null;
-              },
+
+            FormStaggerItem(
+              animation: _stagger,
+              index: 2,
+              child: SheetField(
+                label: 'EMAIL',
+                child: FormTextField(
+                  controller: _emailCtrl,
+                  hint: 'example@mail.ru',
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null;
+                    if (!v.contains('@') || !v.contains('.')) {
+                      return 'Некорректный email';
+                    }
+                    return null;
+                  },
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _label(context, 'Заметки'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: _notesCtrl,
-              maxLines: 3,
-              style: TextStyle(color: colors.textPrimary),
-              decoration:
-                  const InputDecoration(hintText: 'Дополнительная информация...'),
+
+            FormStaggerItem(
+              animation: _stagger,
+              index: 3,
+              child: SheetField(
+                label: 'ЗАМЕТКИ',
+                child: FormTextField(
+                  controller: _notesCtrl,
+                  hint: 'Дополнительная информация...',
+                  maxLines: 3,
+                ),
+              ),
             ),
-            const SizedBox(height: AppSpacing.xxxl),
-            AppButton(
-              label: _isEdit ? 'Сохранить' : 'Добавить клиента',
-              onPressed: _save,
-              isLoading: _loading,
-              icon: Icons.check_rounded,
+            const SizedBox(height: AppSpacing.xxl),
+
+            FormStaggerItem(
+              animation: _stagger,
+              index: 4,
+              child: FormSubmitButton(
+                label: _isEdit ? 'Сохранить' : 'Добавить клиента',
+                accentColor: colors.primary,
+                isLoading: _loading,
+                onPressed: _save,
+                icon: _isEdit ? Icons.check_rounded : Icons.person_add_rounded,
+              ),
             ),
-            const SizedBox(height: 80),
+            const SizedBox(height: AppSpacing.sm),
           ],
         ),
       ),
     );
-  }
-
-  Widget _label(BuildContext context, String text) {
-    final colors = context.appColors;
-    return Text(text,
-        style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: colors.textSecondary));
   }
 }

@@ -14,6 +14,7 @@ import '../../components/app_button.dart';
 import '../../components/app_card.dart';
 import '../../components/app_status_badge.dart';
 import '../../components/app_confirm_sheet.dart';
+import '../../components/app_templates.dart';
 
 class DebtDetailScreen extends StatefulWidget {
   const DebtDetailScreen({super.key, required this.debtId});
@@ -74,24 +75,35 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
-        title: const Text('Долг'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_rounded),
-            onPressed: () =>
-                context.go('/profile/debts/${debt.id}/edit'),
-          ),
-          IconButton(
-            icon: Icon(Icons.delete_outline_rounded,
-                color: colors.expense),
-            onPressed: () => _delete(context),
-          ),
-        ],
-      ),
-      body: ListView(
+      body: SafeArea(
+        child: ListView(
         padding: const EdgeInsets.all(AppSpacing.xl),
         children: [
+          AppDetailHeader(
+            title: debt.personName,
+            subtitle: isReceivable
+                ? 'Этот человек должен вам${debt.dueDate == null ? '' : '. Срок: ${DateHelper.formatDate(debt.dueDate!)}'}'
+                : 'Вы должны этому человеку${debt.dueDate == null ? '' : '. Срок: ${DateHelper.formatDate(debt.dueDate!)}'}',
+            status: AppStatusBadge.debt(debt.computedStatus, context),
+            amountLabel: debt.isFullyPaid ? 'Погашено' : 'Осталось',
+            amount: FinancialCalculator.formatCents(
+              debt.isFullyPaid ? debt.originalAmountCents : debt.remainingCents,
+              currency: currency,
+            ),
+            amountColor: debt.isFullyPaid ? colors.income : accentColor,
+            fallbackRoute: '/profile/debts',
+            actions: [
+              AppTextAction(
+                label: 'Изменить',
+                onPressed: () => context.push('/profile/debts/${debt.id}/edit'),
+              ),
+              AppTextAction(
+                label: 'Удалить',
+                onPressed: () => _delete(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
           // Header card
           AppCard(
             child: Column(
@@ -103,7 +115,7 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.12),
+                        color: accentColor.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -292,6 +304,7 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
           ],
           const SizedBox(height: 80),
         ],
+        ),
       ),
     );
   }
@@ -388,8 +401,10 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
       message: 'Это действие нельзя отменить.',
     );
     if (confirm == true && mounted) {
-      await context.read<DebtProvider>().delete(widget.debtId);
-      context.go('/profile/debts');
+      final dp = context.read<DebtProvider>();
+      final router = GoRouter.of(context);
+      await dp.delete(widget.debtId);
+      router.go('/profile/debts');
     }
   }
 }

@@ -40,6 +40,11 @@ dependencies:
 
   # Icons
   cupertino_icons: ^1.0.8
+  fluttertoast: ^9.1.0
+  http: ^1.6.0
+
+  # Typography
+  google_fonts: ^6.2.1
 
   # Haptics (uses Flutter's built-in HapticFeedback)
   # No extra package needed — HapticFeedback is in flutter/services.dart

@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../screens/onboarding/onboarding_screen.dart';
 import '../screens/shell/app_shell.dart';
 import '../screens/home/home_screen.dart';
+import '../screens/auth/login_screen.dart';
+import '../screens/auth/register_screen.dart';
 import '../screens/finance/finance_screen.dart';
 import '../screens/orders/orders_screen.dart';
 import '../screens/orders/order_detail_screen.dart';
@@ -13,38 +15,57 @@ import '../screens/customers/customer_form_screen.dart';
 import '../screens/debts/debts_screen.dart';
 import '../screens/debts/debt_form_screen.dart';
 import '../screens/debts/debt_detail_screen.dart';
+import '../models/transaction.dart';
 import '../screens/finance/transaction_form_screen.dart';
 import '../screens/profile/profile_screen.dart';
+import '../screens/profile/profile_detail_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/reports/reports_screen.dart';
 import '../screens/reports/report_detail_screen.dart';
 
 class AppRouter {
   static GoRouter router(bool onboardingDone) => GoRouter(
-        initialLocation: onboardingDone ? '/home' : '/onboarding',
+        initialLocation: onboardingDone ? '/home' : '/login',
         routes: [
           GoRoute(
+            path: '/login',
+            builder: (ctx, state) => const LoginScreen(),
+          ),
+          GoRoute(
+            path: '/register',
+            builder: (ctx, state) => const RegisterScreen(),
+          ),
+          GoRoute(
             path: '/onboarding',
-            builder: (_, __) => const OnboardingScreen(),
+            builder: (ctx, state) => const OnboardingScreen(),
           ),
           ShellRoute(
             builder: (context, state, child) => AppShell(child: child),
             routes: [
               GoRoute(
                 path: '/home',
-                builder: (_, __) => const HomeScreen(),
+                builder: (ctx, state) => const HomeScreen(),
               ),
               GoRoute(
                 path: '/finance',
-                builder: (_, __) => const FinanceScreen(),
+                builder: (ctx, state) => const FinanceScreen(),
                 routes: [
                   GoRoute(
                     path: 'new',
-                    builder: (_, __) => const TransactionFormScreen(),
+                    builder: (ctx, state) {
+                      final type = state.uri.queryParameters['type'];
+                      return TransactionFormScreen(
+                        initialType: type == 'expense'
+                            ? TransactionType.expense
+                            : type == 'income'
+                                ? TransactionType.income
+                                : null,
+                      );
+                    },
                   ),
                   GoRoute(
                     path: 'edit/:id',
-                    builder: (_, state) => TransactionFormScreen(
+                    builder: (ctx, state) => TransactionFormScreen(
                       transactionId: state.pathParameters['id'],
                     ),
                   ),
@@ -52,21 +73,21 @@ class AppRouter {
               ),
               GoRoute(
                 path: '/orders',
-                builder: (_, __) => const OrdersScreen(),
+                builder: (ctx, state) => const OrdersScreen(),
                 routes: [
                   GoRoute(
                     path: 'new',
-                    builder: (_, __) => const OrderFormScreen(),
+                    builder: (ctx, state) => const OrderFormScreen(),
                   ),
                   GoRoute(
                     path: ':id',
-                    builder: (_, state) => OrderDetailScreen(
+                    builder: (ctx, state) => OrderDetailScreen(
                       orderId: state.pathParameters['id']!,
                     ),
                     routes: [
                       GoRoute(
                         path: 'edit',
-                        builder: (_, state) => OrderFormScreen(
+                        builder: (ctx, state) => OrderFormScreen(
                           orderId: state.pathParameters['id'],
                         ),
                       ),
@@ -76,25 +97,25 @@ class AppRouter {
               ),
               GoRoute(
                 path: '/profile',
-                builder: (_, __) => const ProfileScreen(),
+                builder: (ctx, state) => const ProfileScreen(),
                 routes: [
                   GoRoute(
                     path: 'customers',
-                    builder: (_, __) => const CustomersScreen(),
+                    builder: (ctx, state) => const CustomersScreen(),
                     routes: [
                       GoRoute(
                         path: 'new',
-                        builder: (_, __) => const CustomerFormScreen(),
+                        builder: (ctx, state) => const CustomerFormScreen(),
                       ),
                       GoRoute(
                         path: ':id',
-                        builder: (_, state) => CustomerDetailScreen(
+                        builder: (ctx, state) => CustomerDetailScreen(
                           customerId: state.pathParameters['id']!,
                         ),
                         routes: [
                           GoRoute(
                             path: 'edit',
-                            builder: (_, state) => CustomerFormScreen(
+                            builder: (ctx, state) => CustomerFormScreen(
                               customerId: state.pathParameters['id'],
                             ),
                           ),
@@ -104,21 +125,21 @@ class AppRouter {
                   ),
                   GoRoute(
                     path: 'debts',
-                    builder: (_, __) => const DebtsScreen(),
+                    builder: (ctx, state) => const DebtsScreen(),
                     routes: [
                       GoRoute(
                         path: 'new',
-                        builder: (_, __) => const DebtFormScreen(),
+                        builder: (ctx, state) => const DebtFormScreen(),
                       ),
                       GoRoute(
                         path: ':id',
-                        builder: (_, state) => DebtDetailScreen(
+                        builder: (ctx, state) => DebtDetailScreen(
                           debtId: state.pathParameters['id']!,
                         ),
                         routes: [
                           GoRoute(
                             path: 'edit',
-                            builder: (_, state) => DebtFormScreen(
+                            builder: (ctx, state) => DebtFormScreen(
                               debtId: state.pathParameters['id'],
                             ),
                           ),
@@ -128,15 +149,19 @@ class AppRouter {
                   ),
                   GoRoute(
                     path: 'settings',
-                    builder: (_, __) => const SettingsScreen(),
+                    builder: (ctx, state) => const SettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'details',
+                    builder: (ctx, state) => const ProfileDetailScreen(),
                   ),
                   GoRoute(
                     path: 'reports',
-                    builder: (_, __) => const ReportsScreen(),
+                    builder: (ctx, state) => const ReportsScreen(),
                     routes: [
                       GoRoute(
                         path: ':year/:month',
-                        builder: (_, state) => ReportDetailScreen(
+                        builder: (ctx, state) => ReportDetailScreen(
                           year: int.parse(state.pathParameters['year']!),
                           month: int.parse(state.pathParameters['month']!),
                         ),

@@ -1,123 +1,80 @@
 import '../models/order.dart';
-import '../services/database_service.dart';
+import '../services/api_client.dart';
 
 class OrderRepository {
-  final _db = DatabaseService.instance;
+  final _api = ApiClient.instance;
 
-  Future<List<Order>> getAll() async {
-    final db = await _db.database;
-    final maps = await db.query('orders', orderBy: 'createdAt DESC');
-    return maps.map(Order.fromMap).toList();
+  List<Order> _parse(dynamic json) {
+    final items = (json['items'] as List?) ?? const [];
+    return items
+        .map((e) => Order.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
+
+  Future<List<Order>> getAll() async => _parse(await _api.get('/api/orders?limit=300'));
 
   Future<Order?> getById(String id) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'orders',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    if (maps.isEmpty) return null;
-    return Order.fromMap(maps.first);
+    try {
+      final json = await _api.get('/api/orders/$id');
+      return Order.fromMap(Map<String, dynamic>.from(json as Map));
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
-  Future<List<Order>> getByCustomer(String customerId) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'orders',
-      where: 'customerId = ?',
-      whereArgs: [customerId],
-      orderBy: 'createdAt DESC',
-    );
-    return maps.map(Order.fromMap).toList();
-  }
+  Future<List<Order>> getByCustomer(String customerId) async =>
+      _parse(await _api.get('/api/orders?customerId=$customerId&limit=200'));
 
-  Future<List<Order>> getByStatus(OrderStatus status) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'orders',
-      where: 'status = ?',
-      whereArgs: [status.toStoredString()],
-      orderBy: 'createdAt DESC',
-    );
-    return maps.map(Order.fromMap).toList();
-  }
+  Future<List<Order>> getByStatus(OrderStatus status) async => _parse(
+        await _api.get('/api/orders?status=${status.toStoredString()}'),
+      );
 
-  Future<List<Order>> search(String query) async {
-    final db = await _db.database;
-    final q = '%${query.toLowerCase()}%';
-    final maps = await db.query(
-      'orders',
-      where: 'LOWER(title) LIKE ? OR LOWER(customerName) LIKE ?',
-      whereArgs: [q, q],
-      orderBy: 'createdAt DESC',
-    );
-    return maps.map(Order.fromMap).toList();
-  }
+  Future<List<Order>> search(String query) async => _parse(
+        await _api.get('/api/orders?q=${Uri.encodeQueryComponent(query)}'),
+      );
 
   Future<void> insert(Order order) async {
-    final db = await _db.database;
-    await db.insert('orders', order.toMap());
+    await _api.post('/api/orders', order.toMap());
   }
 
   Future<void> update(Order order) async {
-    final db = await _db.database;
-    await db.update(
-      'orders',
-      order.toMap(),
-      where: 'id = ?',
-      whereArgs: [order.id],
-    );
+    await _api.put('/api/orders/${order.id}', order.toMap());
   }
 
   Future<void> delete(String id) async {
-    final db = await _db.database;
-    await db.delete('orders', where: 'id = ?', whereArgs: [id]);
+    await _api.delete('/api/orders/$id');
   }
 
-  // ─── Order payments ────────────────────────────────────────────────────────
-
   Future<void> insertPayment(OrderPayment payment) async {
-    final db = await _db.database;
-    await db.insert('order_payments', payment.toMap());
+    await _api.post('/api/orders/${payment.orderId}/payments', {
+      'amountCents': payment.amountCents,
+      'paidAt': payment.paidAt.toIso8601String(),
+      'notes': payment.notes,
+      'paymentId': payment.id,
+      'transactionId': payment.transactionId,
+    });
   }
 
   Future<List<OrderPayment>> getPaymentsForOrder(String orderId) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'order_payments',
-      where: 'orderId = ?',
-      whereArgs: [orderId],
-      orderBy: 'paidAt DESC',
-    );
-    return maps.map(OrderPayment.fromMap).toList();
+    final json = await _api.get('/api/orders/$orderId/payments');
+    final items = (json['items'] as List?) ?? const [];
+    return items
+        .map((e) => OrderPayment.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
-  Future<void> deletePayment(String paymentId) async {
-    final db = await _db.database;
-    await db.delete(
-        'order_payments', where: 'id = ?', whereArgs: [paymentId]);
-  }
+  Future<void> deletePayment(String paymentId) async {}
 
-  /// Get active orders count.
   Future<int> getActiveCount() async {
-    final db = await _db.database;
-    final result = await db.rawQuery('''
-      SELECT COUNT(*) as cnt FROM orders 
-      WHERE status IN ('new', 'inProgress')
-    ''');
-    return (result.first['cnt'] as int?) ?? 0;
+    final json = await _api.get('/api/dashboard');
+    return (json['activeOrdersCount'] as num?)?.toInt() ?? 0;
   }
 
-  /// Get total outstanding balance across all non-cancelled orders.
   Future<int> getTotalOutstandingCents() async {
-    final db = await _db.database;
-    final result = await db.rawQuery('''
-      SELECT SUM(totalPriceCents - receivedCents) as total 
-      FROM orders 
-      WHERE status != 'cancelled' AND totalPriceCents > receivedCents
-    ''');
-    return (result.first['total'] as int?) ?? 0;
+    final orders = await getAll();
+    return orders
+        .where((o) => o.status != OrderStatus.cancelled && o.remainingCents > 0)
+        .fold<int>(0, (sum, o) => sum + o.remainingCents);
   }
 }

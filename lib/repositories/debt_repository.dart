@@ -1,101 +1,71 @@
 import '../models/debt.dart';
-import '../services/database_service.dart';
+import '../services/api_client.dart';
 
 class DebtRepository {
-  final _db = DatabaseService.instance;
+  final _api = ApiClient.instance;
 
-  Future<List<Debt>> getAll() async {
-    final db = await _db.database;
-    final maps = await db.query('debts', orderBy: 'createdAt DESC');
-    return maps.map(Debt.fromMap).toList();
+  List<Debt> _parse(dynamic json) {
+    final items = (json['items'] as List?) ?? const [];
+    return items
+        .map((e) => Debt.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
-  Future<List<Debt>> getByDirection(DebtDirection direction) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'debts',
-      where: 'direction = ?',
-      whereArgs: [direction.toStoredString()],
-      orderBy: 'createdAt DESC',
-    );
-    return maps.map(Debt.fromMap).toList();
-  }
+  Future<List<Debt>> getAll() async => _parse(await _api.get('/api/debts?limit=300'));
+
+  Future<List<Debt>> getByDirection(DebtDirection direction) async => _parse(
+        await _api.get('/api/debts?direction=${direction.toStoredString()}'),
+      );
 
   Future<Debt?> getById(String id) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'debts',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    if (maps.isEmpty) return null;
-    return Debt.fromMap(maps.first);
+    try {
+      final json = await _api.get('/api/debts/$id');
+      return Debt.fromMap(Map<String, dynamic>.from(json as Map));
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
   Future<void> insert(Debt debt) async {
-    final db = await _db.database;
-    await db.insert('debts', debt.toMap());
+    await _api.post('/api/debts', debt.toMap());
   }
 
   Future<void> update(Debt debt) async {
-    final db = await _db.database;
-    await db.update(
-      'debts',
-      debt.toMap(),
-      where: 'id = ?',
-      whereArgs: [debt.id],
-    );
+    await _api.put('/api/debts/${debt.id}', debt.toMap());
   }
 
   Future<void> delete(String id) async {
-    final db = await _db.database;
-    await db.delete('debts', where: 'id = ?', whereArgs: [id]);
+    await _api.delete('/api/debts/$id');
   }
 
-  // ─── Debt payments ─────────────────────────────────────────────────────────
-
   Future<void> insertPayment(DebtPayment payment) async {
-    final db = await _db.database;
-    await db.insert('debt_payments', payment.toMap());
+    await _api.post('/api/debts/${payment.debtId}/payments', {
+      'amountCents': payment.amountCents,
+      'paidAt': payment.paidAt.toIso8601String(),
+      'notes': payment.notes,
+      'paymentId': payment.id,
+      'transactionId': payment.transactionId,
+    });
   }
 
   Future<List<DebtPayment>> getPaymentsForDebt(String debtId) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'debt_payments',
-      where: 'debtId = ?',
-      whereArgs: [debtId],
-      orderBy: 'paidAt DESC',
-    );
-    return maps.map(DebtPayment.fromMap).toList();
+    final json = await _api.get('/api/debts/$debtId/payments');
+    final items = (json['items'] as List?) ?? const [];
+    return items
+        .map((e) => DebtPayment.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
-  Future<void> deletePayment(String paymentId) async {
-    final db = await _db.database;
-    await db.delete(
-        'debt_payments', where: 'id = ?', whereArgs: [paymentId]);
-  }
+  Future<void> deletePayment(String paymentId) async {}
 
-  /// Total outstanding receivables (others owe me).
   Future<int> getTotalReceivableCents() async {
-    final db = await _db.database;
-    final result = await db.rawQuery('''
-      SELECT COALESCE(SUM(originalAmountCents - paidAmountCents), 0) as total
-      FROM debts
-      WHERE direction = 'receivable' AND status != 'paid'
-    ''');
-    return (result.first['total'] as int?) ?? 0;
+    final json = await _api.get('/api/dashboard');
+    return (json['receivableCents'] as num?)?.toInt() ?? 0;
   }
 
-  /// Total outstanding payables (I owe others).
   Future<int> getTotalPayableCents() async {
-    final db = await _db.database;
-    final result = await db.rawQuery('''
-      SELECT COALESCE(SUM(originalAmountCents - paidAmountCents), 0) as total
-      FROM debts
-      WHERE direction = 'payable' AND status != 'paid'
-    ''');
-    return (result.first['total'] as int?) ?? 0;
+    final json = await _api.get('/api/dashboard');
+    return (json['payableCents'] as num?)?.toInt() ?? 0;
   }
 }

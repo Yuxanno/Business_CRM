@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/order.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/customer_repository.dart';
-import '../services/database_service.dart';
 
 class OrderProvider extends ChangeNotifier {
   final _orderRepo = OrderRepository();
@@ -105,48 +104,16 @@ class OrderProvider extends ChangeNotifier {
     DateTime? paidAt,
     String? notes,
   }) async {
-    final db = await DatabaseService.instance.database;
     final now = paidAt ?? DateTime.now();
-
-    await db.transaction((txn) async {
-      // 1. Update order received amount
-      await txn.rawUpdate('''
-        UPDATE orders SET receivedCents = receivedCents + ?, updatedAt = ?
-        WHERE id = ?
-      ''', [amountCents, DateTime.now().toIso8601String(), orderId]);
-
-      // 2. Insert order payment
-      await txn.insert('order_payments', {
-        'id': paymentId,
-        'orderId': orderId,
-        'customerId': customerId,
-        'amountCents': amountCents,
-        'paidAt': now.toIso8601String(),
-        'notes': notes,
-        'transactionId': transactionId,
-      });
-
-      // 3. Insert transaction (income)
-      await txn.insert('transactions', {
-        'id': transactionId,
-        'amountCents': amountCents,
-        'type': 'income',
-        'category': 'order_payment',
-        'description': 'Order payment',
-        'date': now.toIso8601String(),
-        'createdAt': DateTime.now().toIso8601String(),
-        'customerId': customerId,
-        'orderId': orderId,
-        'linkedEntityType': 'order_payment',
-        'linkedEntityId': paymentId,
-      });
-
-      // 4. Update customer received
-      await txn.rawUpdate('''
-        UPDATE customers SET totalReceivedCents = totalReceivedCents + ?
-        WHERE id = ?
-      ''', [amountCents, customerId]);
-    });
+    await _orderRepo.insertPayment(OrderPayment(
+      id: paymentId,
+      orderId: orderId,
+      customerId: customerId,
+      amountCents: amountCents,
+      paidAt: now,
+      notes: notes,
+      transactionId: transactionId,
+    ));
 
     // Refresh local cache
     final updated = await _orderRepo.getById(orderId);

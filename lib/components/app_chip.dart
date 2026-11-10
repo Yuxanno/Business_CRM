@@ -27,18 +27,19 @@ class AppFilterChip extends StatelessWidget {
           vertical: AppSpacing.xs + 2,
         ),
         decoration: BoxDecoration(
-          color: selected ? colors.primary : colors.surfaceSecondary,
-          borderRadius: BorderRadius.circular(AppRadius.chip),
+          color: selected ? colors.primaryContainer : colors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           border: Border.all(
             color: selected ? colors.primary : colors.border,
+            width: selected ? 1.5 : 1,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? colors.onPrimary : colors.textSecondary,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? AppColors.primaryDark : colors.textSecondary,
           ),
         ),
       ),

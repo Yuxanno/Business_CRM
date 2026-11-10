@@ -21,7 +21,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _ownerNameCtrl = TextEditingController();
   String _currency = 'RUB';
   String _locale = 'ru';
-  String _themeMode = 'system';
 
   @override
   void dispose() {
@@ -49,7 +48,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ownerName: _ownerNameCtrl.text.trim(),
       currency: _currency,
       locale: _locale,
-      themeMode: _themeMode,
+      themeMode: 'light',
     );
     if (mounted) context.go('/home');
   }
@@ -95,10 +94,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   _PreferencesPage(
                     currency: _currency,
                     locale: _locale,
-                    themeMode: _themeMode,
                     onCurrencyChanged: (v) => setState(() => _currency = v),
                     onLocaleChanged: (v) => setState(() => _locale = v),
-                    onThemeChanged: (v) => setState(() => _themeMode = v),
                     onFinish: _finish,
                   ),
                 ],
@@ -244,19 +241,15 @@ class _PreferencesPage extends StatelessWidget {
   const _PreferencesPage({
     required this.currency,
     required this.locale,
-    required this.themeMode,
     required this.onCurrencyChanged,
     required this.onLocaleChanged,
-    required this.onThemeChanged,
     required this.onFinish,
   });
 
   final String currency;
   final String locale;
-  final String themeMode;
   final ValueChanged<String> onCurrencyChanged;
   final ValueChanged<String> onLocaleChanged;
-  final ValueChanged<String> onThemeChanged;
   final VoidCallback onFinish;
 
   @override
@@ -274,7 +267,16 @@ class _PreferencesPage extends StatelessWidget {
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
                   color: colors.textPrimary)),
-          const SizedBox(height: AppSpacing.xxxl),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Валюта появится рядом с суммами. Язык меняет подписи интерфейса.',
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.4,
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xxl),
           _OptionRow(
             label: 'Валюта',
             options: const ['RUB', 'USD', 'EUR', 'KZT'],
@@ -288,14 +290,6 @@ class _PreferencesPage extends StatelessWidget {
             labels: const ['Русский', 'English'],
             selected: locale,
             onChanged: onLocaleChanged,
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          _OptionRow(
-            label: 'Тема',
-            options: const ['system', 'light', 'dark'],
-            labels: const ['Системная', 'Светлая', 'Тёмная'],
-            selected: themeMode,
-            onChanged: onThemeChanged,
           ),
           const Spacer(),
           AppButton(label: 'Готово', onPressed: onFinish),
