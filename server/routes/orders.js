@@ -5,6 +5,7 @@ const Customer = require('../models/Customer');
 const Transaction = require('../models/Transaction');
 const { protect, asyncHandler } = require('../middleware/auth');
 const { serialize, serializeMany } = require('../utils/serialize');
+const { dataCache, invalidateUserDataCache } = require('../utils/cache');
 
 const router = express.Router();
 router.use(protect);
@@ -34,9 +35,16 @@ function pick(body) {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const limit = Math.min(Number(req.query.limit) || 200, 500);
-    const skip = Number(req.query.skip) || 0;
-    const filter = { userId: String(req.user._id) };
+    const userId = String(req.user._id);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 500);
+    const skip = Math.max(Number(req.query.skip) || 0, 0);
+    const compact = req.query.compact === '1' || req.query.compact === 'true';
+
+    const cacheKey = `u:${userId}:orders:${req.originalUrl}`;
+    const cached = dataCache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const filter = { userId };
     if (req.query.status) filter.status = req.query.status;
     if (req.query.customerId) filter.customerId = req.query.customerId;
     const q = (req.query.q || '').trim();
@@ -46,11 +54,52 @@ router.get(
         { customerName: new RegExp(q, 'i') },
       ];
     }
-    const [items, total] = await Promise.all([
-      Order.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Order.countDocuments(filter),
+
+    const query = Order.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit + 1);
+
+    if (compact) {
+      query.select('-notes -description');
+    }
+
+    const rawItems = await query.lean();
+    const hasMore = rawItems.length > limit;
+    const pageItems = hasMore ? rawItems.slice(0, limit) : rawItems;
+
+    const payload = {
+      items: serializeMany(pageItems),
+      hasMore,
+      nextSkip: skip + pageItems.length,
+    };
+    dataCache.set(cacheKey, payload, 20000);
+    res.json(payload);
+  })
+);
+
+// Real totals per status (independent of pagination)
+router.get(
+  '/counts',
+  asyncHandler(async (req, res) => {
+    const userId = String(req.user._id);
+    const cacheKey = `u:${userId}:orders:counts`;
+    const cached = dataCache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const rows = await Order.aggregate([
+      { $match: { userId } },
+      { $group: { _id: '$status', n: { $sum: 1 } } },
     ]);
-    res.json({ items: serializeMany(items), total });
+    const byStatus = { new: 0, inProgress: 0, completed: 0, cancelled: 0 };
+    let total = 0;
+    for (const r of rows) {
+      byStatus[r._id] = r.n;
+      total += r.n;
+    }
+    const payload = { total, byStatus };
+    dataCache.set(cacheKey, payload, 20000);
+    res.json(payload);
   })
 );
 
@@ -105,6 +154,7 @@ router.post(
         },
       }
     );
+    invalidateUserDataCache(userId);
     res.status(201).json(serialize(doc));
   })
 );
@@ -112,8 +162,9 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
+    const userId = String(req.user._id);
     const doc = await Order.findOneAndUpdate(
-      { _id: req.params.id, userId: String(req.user._id) },
+      { _id: req.params.id, userId },
       { ...pick(req.body), updatedAt: new Date() },
       { new: true }
     ).lean();
@@ -121,6 +172,7 @@ router.put(
       res.status(404);
       throw new Error('Заказ не найден');
     }
+    invalidateUserDataCache(userId);
     res.json(serialize(doc));
   })
 );
@@ -137,17 +189,20 @@ router.delete(
       res.status(404);
       throw new Error('Заказ не найден');
     }
-    await Customer.updateOne(
-      { _id: doc.customerId, userId },
-      {
-        $inc: {
-          totalOrdersAmountCents: -doc.totalPriceCents,
-          totalReceivedCents: -doc.receivedCents,
-          totalOrdersCount: -1,
-        },
-      }
-    );
-    await OrderPayment.deleteMany({ orderId: doc._id, userId });
+    await Promise.all([
+      Customer.updateOne(
+        { _id: doc.customerId, userId },
+        {
+          $inc: {
+            totalOrdersAmountCents: -doc.totalPriceCents,
+            totalReceivedCents: -doc.receivedCents,
+            totalOrdersCount: -1,
+          },
+        }
+      ),
+      OrderPayment.deleteMany({ orderId: doc._id, userId }),
+    ]);
+    invalidateUserDataCache(userId);
     res.json({ ok: true });
   })
 );
@@ -173,39 +228,40 @@ router.post(
 
     order.receivedCents += amount;
     order.updatedAt = new Date();
-    await order.save();
 
-    await OrderPayment.create({
-      _id: paymentId,
-      userId,
-      orderId: order._id,
-      customerId: order.customerId,
-      amountCents: amount,
-      paidAt,
-      notes: req.body.notes || null,
-      transactionId,
-    });
+    await Promise.all([
+      order.save(),
+      OrderPayment.create({
+        _id: paymentId,
+        userId,
+        orderId: order._id,
+        customerId: order.customerId,
+        amountCents: amount,
+        paidAt,
+        notes: req.body.notes || null,
+        transactionId,
+      }),
+      Transaction.create({
+        _id: transactionId,
+        userId,
+        amountCents: amount,
+        type: 'income',
+        category: 'order_payment',
+        description: `Оплата заказа: ${order.title}`,
+        date: paidAt,
+        createdAt: new Date(),
+        customerId: order.customerId,
+        orderId: order._id,
+        linkedEntityType: 'order_payment',
+        linkedEntityId: paymentId,
+      }),
+      Customer.updateOne(
+        { _id: order.customerId, userId },
+        { $inc: { totalReceivedCents: amount } }
+      ),
+    ]);
 
-    await Transaction.create({
-      _id: transactionId,
-      userId,
-      amountCents: amount,
-      type: 'income',
-      category: 'order_payment',
-      description: `Оплата заказа: ${order.title}`,
-      date: paidAt,
-      createdAt: new Date(),
-      customerId: order.customerId,
-      orderId: order._id,
-      linkedEntityType: 'order_payment',
-      linkedEntityId: paymentId,
-    });
-
-    await Customer.updateOne(
-      { _id: order.customerId, userId },
-      { $inc: { totalReceivedCents: amount } }
-    );
-
+    invalidateUserDataCache(userId);
     res.status(201).json(serialize(order));
   })
 );

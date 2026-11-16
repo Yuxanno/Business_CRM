@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_tr.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import 'app_button.dart';
@@ -126,7 +127,7 @@ class AppErrorState extends StatelessWidget {
             if (onRetry != null) ...[
               const SizedBox(height: AppSpacing.xl),
               AppButton(
-                label: 'Повторить',
+                label: context.tr('Повторить', 'Retry'),
                 onPressed: onRetry,
                 variant: AppButtonVariant.secondary,
                 isFullWidth: false,

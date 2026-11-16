@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../providers/settings_provider.dart';
@@ -10,6 +12,8 @@ import '../../services/date_helper.dart';
 import '../../components/app_card.dart';
 import '../../components/app_empty_state.dart';
 import '../../components/app_skeleton.dart';
+
+const double _kPagePadding = 20.0;
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -38,7 +42,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     try {
       final now = DateTime.now();
-      // Build list of (year, month) for last 12 months
       final months = List.generate(12, (i) {
         var month = now.month - i;
         var year = now.year;
@@ -49,7 +52,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return (year: year, month: month);
       });
 
-      // Load all months in parallel
       final results = await Future.wait(
         months.map((m) => _repo.getMonthSummary(m.year, m.month)),
       );
@@ -76,15 +78,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final currency = context.watch<SettingsProvider>().currency;
+    final now = DateTime.now();
 
-    // Best month for the year badge
-    final bestMonth = _reports.isNotEmpty
-        ? _reports.reduce((a, b) => a.netCents > b.netCents ? a : b)
-        : null;
-    final totalIncome =
-        _reports.fold<int>(0, (s, r) => s + r.incomeCents);
-    final totalExpense =
-        _reports.fold<int>(0, (s, r) => s + r.expenseCents);
+    final totalIncome = _reports.fold<int>(0, (s, r) => s + r.incomeCents);
+    final totalExpense = _reports.fold<int>(0, (s, r) => s + r.expenseCents);
     final hasAnyData = totalIncome > 0 || totalExpense > 0;
 
     return Scaffold(
@@ -93,126 +90,187 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Header ────────────────────────────────────────────────────
+            // ── 1. Clean Top Bar ───────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, 0),
+                _kPagePadding,
+                AppSpacing.md,
+                _kPagePadding,
+                AppSpacing.sm,
+              ),
               child: Row(
                 children: [
                   GestureDetector(
-                    onTap: () => context.go('/profile'),
-                    child: Icon(Icons.arrow_back_rounded,
-                        size: 22, color: colors.textPrimary),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Text(
-                      'Отчёты',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/profile');
+                      }
+                    },
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Icon(
+                        Icons.arrow_back_rounded,
+                        size: 20,
                         color: colors.textPrimary,
                       ),
                     ),
                   ),
-                  // Refresh button
+                  const SizedBox(width: 12),
+                  Text(
+                    context.tr('Отчёты', 'Reports'),
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.6,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  const Spacer(),
                   GestureDetector(
-                    onTap: _loading ? null : _loadReports,
+                    onTap: _loading
+                        ? null
+                        : () {
+                            HapticFeedback.selectionClick();
+                            _loadReports();
+                          },
                     child: Container(
-                      width: 36,
-                      height: 36,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                        color: colors.surfaceSecondary,
-                        borderRadius: BorderRadius.circular(10),
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: colors.border),
                       ),
                       child: _loading
                           ? Padding(
-                              padding: const EdgeInsets.all(9),
+                              padding: const EdgeInsets.all(10),
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 color: colors.primary,
                               ),
                             )
-                          : Icon(Icons.refresh_rounded,
-                              size: 18, color: colors.textSecondary),
+                          : Icon(
+                              Icons.refresh_rounded,
+                              size: 19,
+                              color: colors.textPrimary,
+                            ),
                     ),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: AppSpacing.sm),
-
-            // ── Body ──────────────────────────────────────────────────────
+            // ── 2. Content ─────────────────────────────────────────────────
             Expanded(
-              child: _loading
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.xl),
-                      child: const AppSkeletonList(),
-                    )
-                  : _error != null
-                      ? AppEmptyState(
-                          icon: Icons.error_outline_rounded,
-                          title: 'Ошибка загрузки',
-                          subtitle: 'Проверьте подключение к серверу',
-                          actionLabel: 'Повторить',
-                          onAction: _loadReports,
-                        )
-                      : !hasAnyData
-                          ? const AppEmptyState(
-                              icon: Icons.insights_outlined,
-                              title: 'Отчётов пока нет',
-                              subtitle:
-                                  'Когда появятся операции, здесь будет итог по месяцам',
-                            )
-                          : RefreshIndicator(
-                              color: colors.primary,
-                              onRefresh: _loadReports,
-                              child: ListView.builder(
-                                padding: const EdgeInsets.fromLTRB(
-                                    AppSpacing.xl,
-                                    AppSpacing.xs,
-                                    AppSpacing.xl,
-                                    100),
-                                itemCount: _reports.length +
-                                    (hasAnyData ? 1 : 0),
-                                itemBuilder: (ctx, i) {
-                                  // Year summary banner at top
-                                  if (hasAnyData && i == 0) {
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 280),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                layoutBuilder: (currentChild, previousChildren) => Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    ...previousChildren,
+                    if (currentChild != null) currentChild,
+                  ],
+                ),
+                child: _loading
+                    ? const Align(
+                        key: ValueKey('reports-skeleton'),
+                        alignment: Alignment.topCenter,
+                        child: Padding(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: _kPagePadding),
+                          child: AppSkeletonList(count: 5),
+                        ),
+                      )
+                    : _error != null
+                        ? AppEmptyState(
+                            key: const ValueKey('reports-error'),
+                            icon: Icons.error_outline_rounded,
+                            title: context.tr('Ошибка загрузки', 'Loading error'),
+                            subtitle: context.tr(
+                              'Попробуйте обновить список отчётов',
+                              'Try refreshing the reports list',
+                            ),
+                            actionLabel: context.tr('Повторить', 'Retry'),
+                            onAction: _loadReports,
+                          )
+                        : !hasAnyData
+                            ? AppEmptyState(
+                                key: const ValueKey('reports-empty'),
+                                icon: Icons.insights_outlined,
+                                title: context.tr(
+                                  'Отчётов пока нет',
+                                  'No reports yet',
+                                ),
+                                subtitle: context.tr(
+                                  'Когда появятся доходы или расходы, здесь сформируется аналитика по месяцам',
+                                  'Monthly analytics will appear here once you add income or expenses',
+                                ),
+                              )
+                            : RefreshIndicator(
+                                key: const ValueKey('reports-content'),
+                                color: colors.primary,
+                                backgroundColor: colors.surface,
+                                onRefresh: _loadReports,
+                                child: ListView.builder(
+                                  physics: const AlwaysScrollableScrollPhysics(
+                                    parent: BouncingScrollPhysics(),
+                                  ),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    _kPagePadding,
+                                    4,
+                                    _kPagePadding,
+                                    100,
+                                  ),
+                                  itemCount: _reports.length + 1,
+                                  itemBuilder: (ctx, i) {
+                                    if (i == 0) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 18,
+                                        ),
+                                        child: _YearSummaryCard(
+                                          totalIncome: totalIncome,
+                                          totalExpense: totalExpense,
+                                          currency: currency,
+                                        ),
+                                      );
+                                    }
+
+                                    final report = _reports[i - 1];
+                                    final isCurrent = report.year == now.year &&
+                                        report.month == now.month;
+
                                     return Padding(
-                                      padding: const EdgeInsets.only(
-                                          bottom: AppSpacing.lg),
-                                      child: _YearSummary(
-                                        totalIncome: totalIncome,
-                                        totalExpense: totalExpense,
-                                        currency: currency,
-                                        bestMonth: bestMonth,
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: RepaintBoundary(
+                                        child: _CalmMonthCard(
+                                          report: report,
+                                          currency: currency,
+                                          isCurrent: isCurrent,
+                                          onTap: () {
+                                            HapticFeedback.selectionClick();
+                                            context.go(
+                                              '/profile/reports/${report.year}/${report.month}',
+                                            );
+                                          },
+                                        ),
                                       ),
                                     );
-                                  }
-                                  final report =
-                                      _reports[hasAnyData ? i - 1 : i];
-                                  return Padding(
-                                    padding: const EdgeInsets.only(
-                                        bottom: AppSpacing.sm),
-                                    child: _MonthCard(
-                                      report: report,
-                                      currency: currency,
-                                      isBest: bestMonth != null &&
-                                          hasAnyData &&
-                                          report.year == bestMonth.year &&
-                                          report.month == bestMonth.month &&
-                                          bestMonth.netCents > 0,
-                                      onTap: () => context.go(
-                                          '/profile/reports/${report.year}/${report.month}'),
-                                    ),
-                                  );
-                                },
+                                  },
+                                ),
                               ),
-                            ),
+              ),
             ),
           ],
         ),
@@ -221,7 +279,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 }
 
-// ─── Data class ───────────────────────────────────────────────────────────────
+// ─── Data Model ──────────────────────────────────────────────────────────────
 
 class _MonthReport {
   const _MonthReport({
@@ -241,364 +299,260 @@ class _MonthReport {
   bool get isEmpty => incomeCents == 0 && expenseCents == 0;
 }
 
-// ─── Year summary banner ──────────────────────────────────────────────────────
+// ─── 1. Calm 12-Month Summary Card ───────────────────────────────────────────
 
-class _YearSummary extends StatelessWidget {
-  const _YearSummary({
+class _YearSummaryCard extends StatelessWidget {
+  const _YearSummaryCard({
     required this.totalIncome,
     required this.totalExpense,
     required this.currency,
-    required this.bestMonth,
   });
 
   final int totalIncome;
   final int totalExpense;
   final String currency;
-  final _MonthReport? bestMonth;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     final net = totalIncome - totalExpense;
     final isProfit = net >= 0;
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [const Color(0xFF0F2027), const Color(0xFF134E4A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(AppRadius.cardLarge),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryDeep.withValues(alpha: 0.30),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+    return AppCard(
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'За 12 месяцев',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.80),
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
           Text(
-            FinancialCalculator.formatCents(net.abs(),
-                currency: currency),
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              color: isProfit
-                  ? const Color(0xFF34D399)
-                  : const Color(0xFFFB7185),
-              letterSpacing: -1.2,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-          Text(
-            isProfit ? 'Общая прибыль' : 'Общий убыток',
+            context.tr('Итог за 12 месяцев', '12-month summary'),
             style: TextStyle(
               fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.50),
+              fontWeight: FontWeight.w600,
+              color: colors.textMuted,
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          Divider(color: Colors.white.withValues(alpha: 0.10), height: 1),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '${isProfit ? '+' : '−'}${FinancialCalculator.formatCents(net.abs(), currency: currency)}',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.7,
+                color: colors.textPrimary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Divider(height: 1, color: colors.divider),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: _BannerStat(
-                  label: 'Доходы',
-                  value: FinancialCalculator.formatCentsCompact(
-                      totalIncome, currency: currency),
-                  color: const Color(0xFF34D399),
-                  icon: Icons.arrow_downward_rounded,
+                child: _YearMetricItem(
+                  label: context.tr('Доходы', 'Income'),
+                  amount: FinancialCalculator.formatCents(
+                    totalIncome,
+                    currency: currency,
+                  ),
+                  dotColor: colors.income,
                 ),
               ),
               Container(
                 width: 1,
-                height: 32,
-                color: Colors.white.withValues(alpha: 0.10),
+                height: 30,
+                color: colors.divider,
+                margin: const EdgeInsets.symmetric(horizontal: 12),
               ),
               Expanded(
-                child: _BannerStat(
-                  label: 'Расходы',
-                  value: FinancialCalculator.formatCentsCompact(
-                      totalExpense, currency: currency),
-                  color: const Color(0xFFFB7185),
-                  icon: Icons.arrow_upward_rounded,
+                child: _YearMetricItem(
+                  label: context.tr('Расходы', 'Expenses'),
+                  amount: FinancialCalculator.formatCents(
+                    totalExpense,
+                    currency: currency,
+                  ),
+                  dotColor: colors.expense,
                 ),
               ),
             ],
           ),
-          if (bestMonth != null && bestMonth!.netCents > 0) ...[
-            const SizedBox(height: AppSpacing.md),
-            Divider(
-                color: Colors.white.withValues(alpha: 0.10), height: 1),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Icon(Icons.emoji_events_rounded,
-                    size: 13,
-                    color: const Color(0xFFFBBF24)),
-                const SizedBox(width: 5),
-                Text(
-                  'Лучший месяц: ${DateHelper.formatMonthYear(DateTime(bestMonth!.year, bestMonth!.month))} · ${FinancialCalculator.formatCentsCompact(bestMonth!.netCents, currency: currency)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withValues(alpha: 0.65),
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
   }
 }
 
-class _BannerStat extends StatelessWidget {
-  const _BannerStat({
+class _YearMetricItem extends StatelessWidget {
+  const _YearMetricItem({
     required this.label,
-    required this.value,
-    required this.color,
-    required this.icon,
+    required this.amount,
+    required this.dotColor,
   });
+
   final String label;
-  final String value;
-  final Color color;
-  final IconData icon;
+  final String amount;
+  final Color dotColor;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-      child: Row(
-        children: [
-          Container(
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(7),
+    final colors = context.appColors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+              ),
             ),
-            child: Icon(icon, size: 12, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: colors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            amount,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
-          const SizedBox(width: AppSpacing.sm),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.white.withValues(alpha: 0.45),
-                  )),
-              Text(value,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  )),
-            ],
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-// ─── Month card ───────────────────────────────────────────────────────────────
+// ─── 2. Calm, Scannable Month Card ───────────────────────────────────────────
 
-class _MonthCard extends StatelessWidget {
-  const _MonthCard({
+class _CalmMonthCard extends StatelessWidget {
+  const _CalmMonthCard({
     required this.report,
     required this.currency,
-    required this.isBest,
+    required this.isCurrent,
     required this.onTap,
   });
 
   final _MonthReport report;
   final String currency;
-  final bool isBest;
+  final bool isCurrent;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final netColor =
-        report.isProfit ? colors.income : colors.expense;
+    final isEmpty = report.isEmpty;
+    final isProfit = report.isProfit;
+
+    final monthNumber = report.month.toString().padLeft(2, '0');
+    final monthTitle =
+        DateHelper.formatMonthYear(DateTime(report.year, report.month));
 
     return AppCard(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       onTap: onTap,
       child: Row(
         children: [
-          // Month label + mini bar
+          // Calm Month Number Badge
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isCurrent
+                  ? colors.primary
+                  : (isEmpty ? colors.background : colors.surfaceSecondary),
+              borderRadius: BorderRadius.circular(10),
+              border: isCurrent ? null : Border.all(color: colors.border),
+            ),
+            child: Text(
+              monthNumber,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: isCurrent
+                    ? Colors.white
+                    : (isEmpty ? colors.textMuted : colors.textPrimary),
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // Month Name + Calm Subtitle
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      DateHelper.formatMonthYear(
-                          DateTime(report.year, report.month)),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: report.isEmpty
-                            ? colors.textMuted
-                            : colors.textPrimary,
-                        letterSpacing: -0.1,
-                      ),
-                    ),
-                    if (isBest) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEF3C7),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: const Text(
-                          '★ лучший',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFFD97706),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                if (!report.isEmpty) ...[
-                  const SizedBox(height: 5),
-                  // Mini inline bar: income vs expense
-                  _MiniBar(
-                    incomeCents: report.incomeCents,
-                    expenseCents: report.expenseCents,
-                    currency: currency,
-                  ),
-                ] else ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    'Нет данных',
-                    style: TextStyle(
-                        fontSize: 11, color: colors.textMuted),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          // Net amount
-          if (!report.isEmpty)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
                 Text(
-                  (report.isProfit ? '+' : '−') +
-                      FinancialCalculator.formatCentsCompact(
-                          report.netCents.abs(),
-                          currency: currency),
+                  monthTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: netColor,
-                    letterSpacing: -0.3,
+                    fontWeight: FontWeight.w700,
+                    color: isEmpty ? colors.textSecondary : colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isEmpty
+                      ? context.tr('Операций не было', 'No transactions')
+                      : '+${FinancialCalculator.formatCentsCompact(report.incomeCents, currency: currency)}  ·  −${FinancialCalculator.formatCentsCompact(report.expenseCents, currency: currency)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: isEmpty ? colors.textMuted : colors.textSecondary,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-                Text(
-                  report.isProfit ? 'прибыль' : 'убыток',
-                  style: TextStyle(
-                      fontSize: 10, color: colors.textMuted),
-                ),
               ],
             ),
-          const SizedBox(width: AppSpacing.sm),
-          Icon(Icons.chevron_right_rounded,
-              size: 16, color: colors.textMuted),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Net Result (Right)
+          if (!isEmpty) ...[
+            Text(
+              '${isProfit ? '+' : '−'}${FinancialCalculator.formatCentsCompact(report.netCents.abs(), currency: currency)}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: isProfit ? colors.income : colors.expense,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 18,
+            color: colors.textMuted,
+          ),
         ],
       ),
-    );
-  }
-}
-
-// ─── Mini income/expense bar ──────────────────────────────────────────────────
-
-class _MiniBar extends StatelessWidget {
-  const _MiniBar({
-    required this.incomeCents,
-    required this.expenseCents,
-    required this.currency,
-  });
-  final int incomeCents;
-  final int expenseCents;
-  final String currency;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-
-    return Row(
-      children: [
-        if (incomeCents > 0) ...[
-          Icon(Icons.arrow_downward_rounded,
-              size: 9, color: colors.income),
-          const SizedBox(width: 2),
-          Text(
-            FinancialCalculator.formatCentsCompact(incomeCents,
-                currency: currency),
-            style:
-                TextStyle(fontSize: 11, color: colors.income),
-          ),
-        ],
-        if (incomeCents > 0 && expenseCents > 0)
-          Text('  ·  ',
-              style: TextStyle(
-                  fontSize: 11, color: colors.textMuted)),
-        if (expenseCents > 0) ...[
-          Icon(Icons.arrow_upward_rounded,
-              size: 9, color: colors.expense),
-          const SizedBox(width: 2),
-          Text(
-            FinancialCalculator.formatCentsCompact(expenseCents,
-                currency: currency),
-            style: TextStyle(
-                fontSize: 11, color: colors.expense),
-          ),
-        ],
-      ],
     );
   }
 }

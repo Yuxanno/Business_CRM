@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_tr.dart';
 import '../models/order.dart';
 import '../models/debt.dart';
 import '../theme/app_colors.dart';
@@ -14,24 +15,24 @@ class AppStatusBadge extends StatelessWidget {
     final colors = context.appColors;
     return switch (status) {
       OrderStatus.newOrder => AppStatusBadge._(
-          label: 'Новый',
-          color: AppColors.primary,
-          backgroundColor: colors.primaryContainer,
+          label: context.tr('Новый', 'New'),
+          color: Colors.white,
+          backgroundColor: const Color(0xFF0F766E),
         ),
       OrderStatus.inProgress => AppStatusBadge._(
-          label: 'В работе',
-          color: const Color(0xFF3B82F6),
-          backgroundColor: const Color(0xFFEFF6FF),
+          label: context.tr('В работе', 'In progress'),
+          color: Colors.white,
+          backgroundColor: const Color(0xFF2563EB),
         ),
       OrderStatus.completed => AppStatusBadge._(
-          label: 'Завершён',
-          color: colors.income,
-          backgroundColor: colors.incomeBackground,
+          label: context.tr('Завершён', 'Completed'),
+          color: Colors.white,
+          backgroundColor: colors.income,
         ),
       OrderStatus.cancelled => AppStatusBadge._(
-          label: 'Отменён',
-          color: colors.textMuted,
-          backgroundColor: colors.surfaceSecondary,
+          label: context.tr('Отменён', 'Cancelled'),
+          color: Colors.white,
+          backgroundColor: const Color(0xFF64748B),
         ),
     };
   }
@@ -40,24 +41,24 @@ class AppStatusBadge extends StatelessWidget {
     final colors = context.appColors;
     return switch (status) {
       DebtStatus.unpaid => AppStatusBadge._(
-          label: 'Не оплачен',
-          color: colors.warning,
-          backgroundColor: colors.warningBackground,
+          label: context.tr('Не оплачен', 'Unpaid'),
+          color: Colors.white,
+          backgroundColor: const Color(0xFFD97706),
         ),
       DebtStatus.partiallyPaid => AppStatusBadge._(
-          label: 'Частично',
-          color: const Color(0xFFF97316),
-          backgroundColor: const Color(0xFFFFF7ED),
+          label: context.tr('Частично', 'Partial'),
+          color: Colors.white,
+          backgroundColor: const Color(0xFFEA580C),
         ),
       DebtStatus.paid => AppStatusBadge._(
-          label: 'Оплачен',
-          color: colors.income,
-          backgroundColor: colors.incomeBackground,
+          label: context.tr('Оплачен', 'Paid'),
+          color: Colors.white,
+          backgroundColor: colors.income,
         ),
       DebtStatus.overdue => AppStatusBadge._(
-          label: 'Просрочен',
-          color: colors.expense,
-          backgroundColor: colors.expenseBackground,
+          label: context.tr('Просрочен', 'Overdue'),
+          color: Colors.white,
+          backgroundColor: colors.expense,
         ),
     };
   }

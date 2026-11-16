@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'l10n/app_localizations.dart';
+import 'l10n/app_tr.dart';
+import 'models/transaction.dart';
 import 'theme/app_theme.dart';
 import 'providers/settings_provider.dart';
 import 'providers/customer_provider.dart';
@@ -24,6 +26,26 @@ void main() async {
 
   final settingsProvider = SettingsProvider();
   await settingsProvider.init();
+
+  // Dev only: flutter run --dart-define=SEED_CATEGORIES=true
+  if (const bool.fromEnvironment('SEED_CATEGORIES')) {
+    const income = [
+      'Продажа товаров', 'Услуги', 'Консультации', 'Подписки', 'Аренда (доход)',
+      'Комиссии', 'Реклама (доход)', 'Обучение', 'Проекты', 'Поддержка',
+      'Лицензии', 'Партнёрка', 'Возвраты', 'Гранты', 'Прочий доход',
+    ];
+    const expense = [
+      'Закупка товаров', 'Аренда офиса', 'Зарплаты', 'Налоги', 'Реклама',
+      'Транспорт', 'Связь и интернет', 'Коммунальные', 'Оборудование', 'Софт и сервисы',
+      'Обучение персонала', 'Питание', 'Ремонт', 'Банковские комиссии', 'Прочие расходы',
+    ];
+    for (final c in income) {
+      await settingsProvider.addCategory(TransactionType.income, c);
+    }
+    for (final c in expense) {
+      await settingsProvider.addCategory(TransactionType.expense, c);
+    }
+  }
 
   runApp(
     MultiProvider(
@@ -66,6 +88,7 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
+    AppTr.isEn = settings.locale == 'en';
 
     final locale = settings.locale == 'en'
         ? const Locale('en')

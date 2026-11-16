@@ -1,6 +1,13 @@
 import '../models/order.dart';
 import '../services/api_client.dart';
 
+class OrderPage {
+  const OrderPage({required this.items, required this.hasMore});
+
+  final List<Order> items;
+  final bool hasMore;
+}
+
 class OrderRepository {
   final _api = ApiClient.instance;
 
@@ -11,7 +18,26 @@ class OrderRepository {
         .toList();
   }
 
-  Future<List<Order>> getAll() async => _parse(await _api.get('/api/orders?limit=300'));
+  Future<OrderPage> getPage({
+    int skip = 0,
+    int limit = 25,
+    OrderStatus? status,
+    String? query,
+  }) async {
+    final params = <String>['skip=$skip', 'limit=$limit'];
+    if (status != null) params.add('status=${status.toStoredString()}');
+    if (query != null && query.trim().isNotEmpty) {
+      params.add('q=${Uri.encodeQueryComponent(query.trim())}');
+    }
+    final json = await _api.get('/api/orders?${params.join('&')}');
+    return OrderPage(
+      items: _parse(json),
+      hasMore: json['hasMore'] == true,
+    );
+  }
+
+  Future<List<Order>> getAll() async =>
+      _parse(await _api.get('/api/orders?limit=300'));
 
   Future<Order?> getById(String id) async {
     try {
@@ -67,7 +93,7 @@ class OrderRepository {
   Future<void> deletePayment(String paymentId) async {}
 
   Future<int> getActiveCount() async {
-    final json = await _api.get('/api/dashboard');
+    final json = await _api.get('/api/dashboard/summary');
     return (json['activeOrdersCount'] as num?)?.toInt() ?? 0;
   }
 
@@ -77,4 +103,8 @@ class OrderRepository {
         .where((o) => o.status != OrderStatus.cancelled && o.remainingCents > 0)
         .fold<int>(0, (sum, o) => sum + o.remainingCents);
   }
+
+  /// Real totals per status from the server (not limited by pagination).
+  Future<Map<String, dynamic>> getCounts() async =>
+      Map<String, dynamic>.from(await _api.get('/api/orders/counts') as Map);
 }

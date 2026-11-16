@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../models/order.dart';
 import '../../providers/order_provider.dart';
+import '../../providers/dashboard_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/financial_calculator.dart';
 import '../../services/date_helper.dart';
+import '../../components/app_avatar.dart';
 import '../../components/app_card.dart';
-import '../../components/app_chip.dart';
 import '../../components/app_empty_state.dart';
 import '../../components/app_status_badge.dart';
 import '../../components/app_confirm_sheet.dart';
 import '../../components/app_skeleton.dart';
+
+const double _kPagePadding = 20.0;
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -41,11 +46,47 @@ class _OrdersScreenState extends State<OrdersScreen> {
     super.dispose();
   }
 
+  Future<void> _reload() async {
+    HapticFeedback.mediumImpact();
+    await context.read<OrderProvider>().load();
+    if (mounted) {
+      context.read<DashboardProvider>().reload();
+    }
+  }
+
+  Future<void> _openForm(String route) async {
+    HapticFeedback.lightImpact();
+    await context.push(route);
+    if (mounted) {
+      await context.read<OrderProvider>().load();
+      if (mounted) context.read<DashboardProvider>().reload();
+    }
+  }
+
+  Future<void> _confirmDelete(BuildContext context, Order order) async {
+    final confirm = await showConfirmSheet(
+      context: context,
+      title: context.tr('Удалить заказ?', 'Delete order?'),
+      message: context.tr(
+        'Заказ «${order.title}» и история его платежей будут удалены безвозвратно.',
+        'Order "${order.title}" and its payment history will be permanently deleted.',
+      ),
+    );
+    if (confirm == true && context.mounted) {
+      await context.read<OrderProvider>().delete(order.id);
+      if (context.mounted) {
+        context.read<DashboardProvider>().reload();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final provider = context.watch<OrderProvider>();
     final currency = context.watch<SettingsProvider>().currency;
+    final allOrders = provider.allOrders;
+    final visibleOrders = provider.orders;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -53,486 +94,808 @@ class _OrdersScreenState extends State<OrdersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Header / Search ──────────────────────────────────────────────
+            // ── 1. Pinned Top Header / Search Bar ─────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, 0),
+                _kPagePadding,
+                AppSpacing.md,
+                _kPagePadding,
+                0,
+              ),
+              child: _OrdersTopBar(
+                totalCount: provider.totalCount,
+                searchActive: _searchActive,
+                searchController: _searchCtrl,
+                onToggleSearch: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _searchActive = !_searchActive;
+                    if (!_searchActive) {
+                      _searchCtrl.clear();
+                      provider.setSearch('');
+                    }
+                  });
+                },
+                onSearchChanged: provider.setSearch,
+                onAddOrder: () => _openForm('/orders/new'),
+              ),
+            ),
+
+            // ── 2. Pinned Status Filter Strip with Counts ─────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                0,
+                AppSpacing.md,
+                0,
+                AppSpacing.xs,
+              ),
+              child: _StatusFilterStrip(
+                allOrders: allOrders,
+                totalCount: provider.totalCount,
+                countForStatus: provider.countForStatus,
+                selected: provider.statusFilter,
+                onSelect: (status) {
+                  HapticFeedback.selectionClick();
+                  provider.setStatusFilter(status);
+                },
+              ),
+            ),
+
+            // ── 3. Scrollable Orders List ─────────────────────────────────
+            Expanded(
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                transitionBuilder: (child, anim) => FadeTransition(
-                  opacity: anim,
-                  child: child,
+                duration: const Duration(milliseconds: 280),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                layoutBuilder: (currentChild, previousChildren) => Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    ...previousChildren,
+                    if (currentChild != null) currentChild,
+                  ],
                 ),
-                child: _searchActive
-                    ? _SearchField(
-                        key: const ValueKey('search'),
-                        controller: _searchCtrl,
-                        onChanged: provider.setSearch,
-                        onClose: () {
-                          setState(() => _searchActive = false);
+                child: provider.isLoading
+                    ? const Align(
+                        key: ValueKey('skeleton'),
+                        alignment: Alignment.topCenter,
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            _kPagePadding,
+                            AppSpacing.md,
+                            _kPagePadding,
+                            100,
+                          ),
+                          child: AppSkeletonList(count: 4),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        key: const ValueKey('content'),
+                        color: colors.primary,
+                        backgroundColor: colors.surface,
+                        onRefresh: _reload,
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            if (notification.metrics.pixels >=
+                                    notification.metrics.maxScrollExtent - 320 &&
+                                provider.hasMore &&
+                                !provider.isLoadingMore) {
+                              provider.loadMore();
+                            }
+                            return false;
+                          },
+                          child: CustomScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: BouncingScrollPhysics(),
+                            ),
+                            slivers: [
+
+              // ── 4. Orders List / Empty State ──────────────────────────────
+              if (visibleOrders.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: _kPagePadding,
+                      vertical: AppSpacing.xl,
+                    ),
+                    child: AppEmptyState(
+                      icon: Icons.shopping_bag_outlined,
+                      title: allOrders.isEmpty
+                          ? context.tr('Пока нет заказов', 'No orders yet')
+                          : context.tr('Заказы не найдены', 'No orders found'),
+                      subtitle: allOrders.isEmpty
+                          ? context.tr(
+                              'Создайте первый заказ, чтобы отслеживать сроки, статусы и платежи клиентов',
+                              'Create your first order to track deadlines, statuses, and customer payments',
+                            )
+                          : context.tr(
+                              'Попробуйте выбрать другой статус или изменить поисковый запрос',
+                              'Try choosing another status or changing your search query',
+                            ),
+                      actionLabel: allOrders.isEmpty
+                          ? context.tr('Создать заказ', 'Create order')
+                          : context.tr('Сбросить фильтры', 'Reset filters'),
+                      onAction: () {
+                        if (allOrders.isEmpty) {
+                          _openForm('/orders/new');
+                        } else {
                           _searchCtrl.clear();
                           provider.setSearch('');
-                        },
-                      )
-                    : Row(
-                        key: const ValueKey('title'),
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Заказы',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
-                                color: colors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () =>
-                                setState(() => _searchActive = true),
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: colors.surfaceSecondary,
-                                borderRadius: BorderRadius.circular(10),
-                                border:
-                                    Border.all(color: colors.border),
-                              ),
-                              child: Icon(Icons.search_rounded,
-                                  size: 18,
-                                  color: colors.textSecondary),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-            ),
-
-            // ── Status filters ───────────────────────────────────────────────
-            const SizedBox(height: AppSpacing.sm),
-            SizedBox(
-              height: 36,
-              child: ListView(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xl),
-                scrollDirection: Axis.horizontal,
-                children: [
-                  AppFilterChip(
-                    label: 'Все',
-                    selected: provider.statusFilter == null,
-                    onTap: () => provider.setStatusFilter(null),
+                          provider.setStatusFilter(null);
+                          setState(() => _searchActive = false);
+                        }
+                      },
+                    ),
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  ...OrderStatus.values.map((s) => Padding(
-                        padding:
-                            const EdgeInsets.only(right: AppSpacing.sm),
-                        child: AppFilterChip(
-                          label: _statusLabel(s),
-                          selected: provider.statusFilter == s,
-                          onTap: () => provider.setStatusFilter(s),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    _kPagePadding,
+                    AppSpacing.sm,
+                    _kPagePadding,
+                    110,
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (ctx, i) {
+                        final order = visibleOrders[i];
+                        return RepaintBoundary(
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _ModernOrderCard(
+                              order: order,
+                              currency: currency,
+                              onTap: () async {
+                                HapticFeedback.selectionClick();
+                                await context.push('/orders/${order.id}');
+                                if (mounted) {
+                                  context.read<OrderProvider>().load();
+                                  context.read<DashboardProvider>().reload();
+                                }
+                              },
+                              onEdit: () =>
+                                  _openForm('/orders/${order.id}/edit'),
+                              onDelete: () => _confirmDelete(context, order),
+                            ),
+                          ),
+                        );
+                      },
+                      childCount: visibleOrders.length,
+                    ),
+                  ),
+                ),
+              if (provider.isLoadingMore)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 36),
+                    child: Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: colors.primary,
                         ),
-                      )),
-                ],
+                      ),
+                    ),
+                  ),
+                ),
+                    ],
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: AppSpacing.sm),
-
-            // ── Body ─────────────────────────────────────────────────────────
-            Expanded(
-              child: provider.isLoading
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.xl, AppSpacing.md, AppSpacing.xl, 0),
-                      child: const AppSkeletonList(count: 5),
-                    )
-                  : provider.orders.isEmpty
-                      ? AppEmptyState(
-                          icon: Icons.receipt_long_outlined,
-                          title: 'Пока нет заказов',
-                          subtitle:
-                              'Создайте заказ — статус и оплату будет видно сразу',
-                          actionLabel: 'Создать заказ',
-                          onAction: () => context.push('/orders/new'),
-                        )
-                      : RefreshIndicator(
-                          color: colors.primary,
-                          onRefresh: () =>
-                              context.read<OrderProvider>().load(),
-                          child: ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(
-                                AppSpacing.xl,
-                                AppSpacing.xs,
-                                AppSpacing.xl,
-                                100),
-                            itemCount: provider.orders.length,
-                            itemBuilder: (ctx, i) {
-                              final order = provider.orders[i];
-                              return Padding(
-                                padding: const EdgeInsets.only(
-                                    bottom: AppSpacing.sm),
-                                child: _OrderCard(
-                                  order: order,
-                                  currency: currency,
-                                  onTap: () =>
-                                      context.go('/orders/${order.id}'),
-                                  onDelete: () =>
-                                      _confirmDelete(context, order),
-                                  onEdit: () => context
-                                      .push('/orders/${order.id}/edit'),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
             ),
           ],
         ),
       ),
     );
   }
-
-  String _statusLabel(OrderStatus s) => switch (s) {
-        OrderStatus.newOrder => 'Новые',
-        OrderStatus.inProgress => 'В работе',
-        OrderStatus.completed => 'Завершённые',
-        OrderStatus.cancelled => 'Отменённые',
-      };
-
-  Future<void> _confirmDelete(BuildContext context, Order order) async {
-    final confirm = await showConfirmSheet(
-      context: context,
-      title: 'Удалить заказ?',
-      message:
-          'Это действие нельзя отменить. История платежей будет удалена.',
-    );
-    if (confirm == true && mounted) {
-      await context.read<OrderProvider>().delete(order.id);
-    }
-  }
 }
 
-// ─── Search field ─────────────────────────────────────────────────────────────
+// ─── 1. Top Bar ───────────────────────────────────────────────────────────────
 
-class _SearchField extends StatefulWidget {
-  const _SearchField({
-    super.key,
-    required this.controller,
-    required this.onChanged,
-    required this.onClose,
+class _OrdersTopBar extends StatelessWidget {
+  const _OrdersTopBar({
+    required this.totalCount,
+    required this.searchActive,
+    required this.searchController,
+    required this.onToggleSearch,
+    required this.onSearchChanged,
+    required this.onAddOrder,
   });
 
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onClose;
-
-  @override
-  State<_SearchField> createState() => _SearchFieldState();
-}
-
-class _SearchFieldState extends State<_SearchField> {
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_rebuild);
-  }
-
-  void _rebuild() => setState(() {});
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_rebuild);
-    super.dispose();
-  }
+  final int totalCount;
+  final bool searchActive;
+  final TextEditingController searchController;
+  final VoidCallback onToggleSearch;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onAddOrder;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final hasText = widget.controller.text.isNotEmpty;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: searchActive
+          ? Container(
+              key: const ValueKey('orders-search'),
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: colors.primary, width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.primary.withValues(alpha: 0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.search_rounded, size: 18, color: colors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: searchController,
+                      autofocus: true,
+                      onChanged: onSearchChanged,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => FocusScope.of(context).unfocus(),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: colors.textPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: context.tr(
+                          'Поиск по названию или клиенту...',
+                          'Search by title or customer...',
+                        ),
+                        hintStyle: TextStyle(
+                          fontSize: 13,
+                          color: colors.textMuted,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                        filled: false,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: onToggleSearch,
+                    child: Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: colors.surfaceSecondary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 15,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : Row(
+              key: const ValueKey('orders-title'),
+              children: [
+                Text(
+                  context.tr('Заказы', 'Orders'),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.6,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                if (totalCount > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$totalCount',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: colors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                GestureDetector(
+                  onTap: onToggleSearch,
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colors.border),
+                    ),
+                    child: Icon(
+                      Icons.search_rounded,
+                      size: 18,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onAddOrder,
+                  child: Container(
+                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: colors.primary,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: colors.primary.withValues(alpha: 0.22),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.add_rounded,
+                            size: 17, color: Colors.white),
+                        const SizedBox(width: 4),
+                        Text(
+                          context.tr('Новый', 'New'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+// ─── 2. Status Filter Strip ──────────────────────────────────────────────────
+
+class _StatusFilterStrip extends StatelessWidget {
+  const _StatusFilterStrip({
+    required this.allOrders,
+    required this.totalCount,
+    required this.countForStatus,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<Order> allOrders;
+  final int totalCount;
+  final int Function(OrderStatus) countForStatus;
+  final OrderStatus? selected;
+  final ValueChanged<OrderStatus?> onSelect;
+
+  int _countFor(OrderStatus status) => countForStatus(status);
+
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <(OrderStatus?, String, Color?)>[
+      (null, context.tr('Все', 'All'), null),
+      (OrderStatus.newOrder, context.tr('Новые', 'New'), AppColors.primary),
+      (
+        OrderStatus.inProgress,
+        context.tr('В работе', 'In progress'),
+        const Color(0xFF0EA5E9),
+      ),
+      (
+        OrderStatus.completed,
+        context.tr('Завершённые', 'Completed'),
+        AppColors.income,
+      ),
+      (
+        OrderStatus.cancelled,
+        context.tr('Отменённые', 'Cancelled'),
+        AppColors.slate400,
+      ),
+    ];
 
     return SizedBox(
-      height: 36,
-      child: Row(
-        children: [
-          // Back — closes search
-          GestureDetector(
-            onTap: widget.onClose,
-            child: Icon(Icons.arrow_back_rounded,
-                size: 22, color: colors.textPrimary),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          // Input
-          Expanded(
-            child: TextField(
-              controller: widget.controller,
-              onChanged: widget.onChanged,
-              autofocus: true,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: colors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Поиск заказов…',
-                hintStyle: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w400,
-                  color: colors.textMuted,
+      height: 38,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: _kPagePadding),
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final item = items[i];
+          final isSelected = selected == item.$1;
+          final count =
+              item.$1 == null ? totalCount : _countFor(item.$1!);
+          final colors = context.appColors;
+          final activeColor = item.$3 ?? colors.primary;
+
+          return GestureDetector(
+            onTap: () => onSelect(item.$1),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isSelected ? activeColor : colors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? activeColor : colors.border,
                 ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-                isDense: true,
-                filled: false,
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: activeColor.withValues(alpha: 0.22),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    item.$2,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? Colors.white : colors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Colors.white.withValues(alpha: 0.22)
+                          : colors.surfaceSecondary,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: isSelected ? Colors.white : colors.textMuted,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          // Clear
-          if (hasText)
-            GestureDetector(
-              onTap: () {
-                widget.controller.clear();
-                widget.onChanged('');
-              },
-              child: Padding(
-                padding:
-                    const EdgeInsets.only(left: AppSpacing.sm),
-                child: Icon(Icons.close_rounded,
-                    size: 18, color: colors.textMuted),
-              ),
-            ),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
-// ─── Order card ───────────────────────────────────────────────────────────────
+// ─── 4. Modern Order Card ────────────────────────────────────────────────────
 
-class _OrderCard extends StatelessWidget {
-  const _OrderCard({
+class _ModernOrderCard extends StatelessWidget {
+  const _ModernOrderCard({
     required this.order,
     required this.currency,
     required this.onTap,
-    required this.onDelete,
     required this.onEdit,
+    required this.onDelete,
   });
 
   final Order order;
   final String currency;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final progress = order.paymentProgress.clamp(0.0, 1.0);
-    final paidColor =
-        order.isFullyPaid ? colors.income : colors.primary;
+    final isCancelled = order.status == OrderStatus.cancelled;
+    final paidColor = isCancelled
+        ? colors.textMuted
+        : (order.isFullyPaid ? colors.income : colors.primary);
 
     return Slidable(
+      key: ValueKey(order.id),
       endActionPane: ActionPane(
         motion: const DrawerMotion(),
-        extentRatio: 0.40,
+        extentRatio: 0.42,
         children: [
           SlidableAction(
             onPressed: (_) => onEdit(),
             backgroundColor: colors.primary,
             foregroundColor: Colors.white,
             icon: Icons.edit_rounded,
-            label: 'Изменить',
+            label: context.tr('Изменить', 'Edit'),
           ),
           SlidableAction(
             onPressed: (_) => onDelete(),
             backgroundColor: colors.expense,
             foregroundColor: Colors.white,
             icon: Icons.delete_outline_rounded,
-            label: 'Удалить',
+            label: context.tr('Удалить', 'Delete'),
           ),
         ],
       ),
       child: AppCard(
-        padding: const EdgeInsets.all(AppSpacing.md),
+        padding: const EdgeInsets.all(16),
+        radius: AppRadius.cardLarge,
         onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Title row ─────────────────────────────────────────────────
+            // Top Row: Customer Avatar + Title + Status Badge
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                AppAvatar(
+                  name: order.customerName.isNotEmpty
+                      ? order.customerName
+                      : order.title,
+                  size: 40,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         order.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 15,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
                           color: colors.textPrimary,
-                          letterSpacing: -0.2,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        order.customerName,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.textMuted,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.person_outline_rounded,
+                            size: 13,
+                            color: colors.textMuted,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              order.customerName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: AppSpacing.sm),
+                const SizedBox(width: 8),
                 AppStatusBadge.order(order.status, context),
               ],
             ),
 
-            const SizedBox(height: AppSpacing.md),
+            const SizedBox(height: 14),
 
-            // ── Payment row ───────────────────────────────────────────────
-            Row(
-              children: [
-                // Progress bar
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // Financial & Deadline Box
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.background,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          backgroundColor: colors.surfaceSecondary,
-                          valueColor:
-                              AlwaysStoppedAnimation(paidColor),
-                          minHeight: 5,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.tr('Стоимость заказа', 'Order total'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: colors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                FinancialCalculator.formatCents(
+                                  order.totalPriceCents,
+                                  currency: currency,
+                                ),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: colors.textPrimary,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures()
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        order.isFullyPaid
-                            ? 'Оплачено полностью'
-                            : 'Получено ${FinancialCalculator.formatCents(order.receivedCents, currency: currency)}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: order.isFullyPaid
-                              ? colors.income
-                              : colors.textMuted,
-                          fontWeight: order.isFullyPaid
-                              ? FontWeight.w600
-                              : FontWeight.w400,
+                      const SizedBox(width: 8),
+                      if (order.dueDate != null)
+                        _DeadlineBadge(
+                          dueDate: order.dueDate!,
+                          isDone: order.status == OrderStatus.completed ||
+                              order.status == OrderStatus.cancelled,
                         ),
-                      ),
                     ],
                   ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                // Total
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      FinancialCalculator.formatCents(
-                          order.totalPriceCents,
-                          currency: currency),
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: colors.textPrimary,
-                        letterSpacing: -0.3,
-                        fontFeatures: const [
-                          FontFeature.tabularFigures()
-                        ],
-                      ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 5,
+                      backgroundColor: colors.border.withValues(alpha: 0.6),
+                      valueColor: AlwaysStoppedAnimation(paidColor),
                     ),
-                    if (order.dueDate != null)
-                      Text(
-                        _dueDateLabel(order.dueDate!),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _isDueSoon(order.dueDate!)
-                              ? colors.warning
-                              : colors.textMuted,
-                          fontWeight: _isDueSoon(order.dueDate!)
-                              ? FontWeight.w600
-                              : FontWeight.w400,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        order.isFullyPaid
+                            ? Icons.verified_rounded
+                            : Icons.payments_outlined,
+                        size: 13,
+                        color: order.isFullyPaid
+                            ? colors.income
+                            : colors.textSecondary,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          order.isFullyPaid
+                              ? context.tr('Оплачено полностью', 'Fully paid')
+                              : context.tr(
+                                  'Получено: ${FinancialCalculator.formatCents(order.receivedCents, currency: currency)}',
+                                  'Paid: ${FinancialCalculator.formatCents(order.receivedCents, currency: currency)}',
+                                ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: order.isFullyPaid
+                                ? colors.income
+                                : colors.textSecondary,
+                          ),
                         ),
                       ),
-                  ],
-                ),
-              ],
+                      if (!order.isFullyPaid && !isCancelled)
+                        Text(
+                          context.tr(
+                            'Остаток: ${FinancialCalculator.formatCentsCompact(order.remainingCents, currency: currency)}',
+                            'Due: ${FinancialCalculator.formatCentsCompact(order.remainingCents, currency: currency)}',
+                          ),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: colors.warning,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-
-            // ── Status hint ───────────────────────────────────────────────
-            if (order.status != OrderStatus.completed &&
-                order.status != OrderStatus.cancelled) ...[
-              const SizedBox(height: AppSpacing.sm),
-              _StatusHint(order: order),
-            ],
           ],
         ),
       ),
     );
   }
-
-  String _dueDateLabel(DateTime due) {
-    final diff = due.difference(DateTime.now()).inDays;
-    if (diff < 0) return 'Просрочен';
-    if (diff == 0) return 'Сдать сегодня';
-    if (diff == 1) return 'Сдать завтра';
-    return 'до ${DateHelper.formatShortDate(due)}';
-  }
-
-  bool _isDueSoon(DateTime due) {
-    final diff = due.difference(DateTime.now()).inDays;
-    return diff <= 1;
-  }
 }
 
-// ─── Status hint strip ────────────────────────────────────────────────────────
+class _DeadlineBadge extends StatelessWidget {
+  const _DeadlineBadge({
+    required this.dueDate,
+    required this.isDone,
+  });
 
-class _StatusHint extends StatelessWidget {
-  const _StatusHint({required this.order});
-  final Order order;
+  final DateTime dueDate;
+  final bool isDone;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final diffDays = target.difference(today).inDays;
 
-    final (text, color) = switch (order.status) {
-      OrderStatus.newOrder => order.isFullyPaid
-          ? ('Взять в работу', colors.primary)
-          : ('Принять оплату → взять в работу', colors.primary),
-      OrderStatus.inProgress => order.isFullyPaid
-          ? ('Завершить заказ', colors.income)
-          : ('Принять оплату → завершить', colors.income),
-      _ => ('', colors.textMuted),
-    };
+    Color badgeColor = colors.textSecondary;
+    String label = context.tr(
+      'до ${DateHelper.formatShortDate(dueDate)}',
+      'due ${DateHelper.formatShortDate(dueDate)}',
+    );
+    IconData icon = Icons.event_outlined;
 
-    if (text.isEmpty) return const SizedBox.shrink();
+    if (!isDone) {
+      if (diffDays < 0) {
+        badgeColor = colors.expense;
+        label = context.tr('Просрочен', 'Overdue');
+        icon = Icons.warning_amber_rounded;
+      } else if (diffDays == 0) {
+        badgeColor = colors.warning;
+        label = context.tr('Сдать сегодня', 'Due today');
+        icon = Icons.schedule_rounded;
+      } else if (diffDays == 1) {
+        badgeColor = colors.warning;
+        label = context.tr('Сдать завтра', 'Due tomorrow');
+        icon = Icons.schedule_rounded;
+      }
+    }
 
-    return Row(
-      children: [
-        Icon(Icons.arrow_forward_rounded, size: 12, color: color),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: color,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: badgeColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: badgeColor,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

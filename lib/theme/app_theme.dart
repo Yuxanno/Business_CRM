@@ -74,6 +74,15 @@ class AppTheme {
       brightness: brightness,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: semantics.background,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _SmoothFadePageTransitionsBuilder(),
+          TargetPlatform.iOS: _SmoothFadePageTransitionsBuilder(),
+          TargetPlatform.macOS: _SmoothFadePageTransitionsBuilder(),
+          TargetPlatform.windows: _SmoothFadePageTransitionsBuilder(),
+          TargetPlatform.linux: _SmoothFadePageTransitionsBuilder(),
+        },
+      ),
       extensions: [semantics],
       textTheme: baseText.copyWith(
         displayLarge: styled(baseText.displayLarge,
@@ -204,6 +213,41 @@ class AppTheme {
         ),
         iconColor: semantics.textSecondary,
       ),
+    );
+  }
+}
+
+/// Silky page transition: gentle 2.5% horizontal glide paired with an
+/// accelerated fade-in so pushes feel crisp without overlapping heavy sheets.
+class _SmoothFadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _SmoothFadePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final fade = CurvedAnimation(
+      parent: animation,
+      curve: const Interval(0.0, 0.78, curve: Curves.easeOutCubic),
+      reverseCurve: Curves.easeInCubic,
+    );
+    final slide = Tween<Offset>(
+      begin: const Offset(0.025, 0),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      ),
+    );
+    return FadeTransition(
+      opacity: fade,
+      child: SlideTransition(position: slide, child: child),
     );
   }
 }

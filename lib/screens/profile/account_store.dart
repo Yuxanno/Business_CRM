@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_client.dart';
+import '../../services/local_cache.dart';
+import '../../l10n/app_tr.dart';
 
 class AccountInfo {
   const AccountInfo({
@@ -95,7 +97,30 @@ class AccountStore {
     } on ApiException catch (e) {
       return e.message;
     } catch (_) {
-      return 'Не удалось сохранить. Проверьте, что сервер запущен.';
+      return AppTr.tr(
+        'Не удалось сохранить. Проверьте, что сервер запущен.',
+        'Failed to save. Make sure the server is running.',
+      );
+    }
+  }
+
+  /// Permanently deletes the account and all its data on the server
+  /// after verifying [password]. Returns an error message, or null on success.
+  static Future<String?> deleteAccount({required String password}) async {
+    try {
+      await ApiClient.instance.delete(
+        '/api/auth/account',
+        {'password': password},
+      );
+      await clearSession();
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return AppTr.tr(
+        'Не удалось удалить аккаунт. Проверьте, что сервер запущен.',
+        'Failed to delete account. Make sure the server is running.',
+      );
     }
   }
 
@@ -104,5 +129,7 @@ class AccountStore {
     await prefs.remove('authToken');
     await prefs.remove('userName');
     await prefs.remove('userLogin');
+    ApiClient.instance.clearSessionCache();
+    await LocalCache.clearAll();
   }
 }

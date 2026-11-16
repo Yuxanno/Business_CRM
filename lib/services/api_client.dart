@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../l10n/app_tr.dart';
 
 class ApiException implements Exception {
   ApiException(this.message, {this.statusCode});
@@ -13,23 +14,80 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// HTTP client for the Biznes CRM API. Reads JWT from SharedPreferences.
+/// HTTP client for the Biznes CRM API.
+/// Uses a persistent keep-alive [http.Client], caches the JWT in memory,
+/// and applies strict request timeouts so UI never stalls on slow networks.
 class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
+
+  static const _requestTimeout = Duration(seconds: 8);
+
+  final http.Client _client = http.Client();
+  String? _cachedToken;
+  bool _tokenLoaded = false;
+
+  // Simple ETag cache per GET path so unchanged responses can return 304
+  final Map<String, String> _etags = {};
+  final Map<String, dynamic> _etagPayloads = {};
 
   static String get baseUrl {
     if (kIsWeb) return 'http://localhost:3001';
     return 'http://localhost:3001';
   }
 
-  Future<Map<String, String>> _headers() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('authToken');
+  void setToken(String? token) {
+    _cachedToken = (token != null && token.isNotEmpty) ? token : null;
+    _tokenLoaded = true;
+  }
+
+  void clearSessionCache() {
+    _cachedToken = null;
+    _tokenLoaded = true;
+    _etags.clear();
+    _etagPayloads.clear();
+  }
+
+  Future<Map<String, String>> _headers({String? etag}) async {
+    if (!_tokenLoaded) {
+      final prefs = await SharedPreferences.getInstance();
+      _cachedToken = prefs.getString('authToken');
+      _tokenLoaded = true;
+    }
     return {
       'Content-Type': 'application/json',
-      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      'Accept-Language': AppTr.isEn ? 'en' : 'ru',
+      if (_cachedToken != null && _cachedToken!.isNotEmpty)
+        'Authorization': 'Bearer $_cachedToken',
+      if (etag != null && etag.isNotEmpty) 'If-None-Match': etag,
     };
+  }
+
+  /// Resources whose cached GET responses may change after a write to [path].
+  /// Unknown paths fall back to dropping everything (safe default).
+  static const _dependents = <String, List<String>>{
+    '/api/orders': ['/api/orders', '/api/customers', '/api/dashboard', '/api/transactions', '/api/debts'],
+    '/api/customers': ['/api/customers', '/api/orders', '/api/dashboard', '/api/debts'],
+    '/api/transactions': ['/api/transactions', '/api/dashboard', '/api/orders', '/api/customers', '/api/debts'],
+    '/api/debts': ['/api/debts', '/api/transactions', '/api/dashboard', '/api/customers'],
+  };
+
+  void _invalidateFor(String path) {
+    List<String>? prefixes;
+    for (final e in _dependents.entries) {
+      if (path.startsWith(e.key)) {
+        prefixes = e.value;
+        break;
+      }
+    }
+    if (prefixes == null) {
+      _etags.clear();
+      _etagPayloads.clear();
+      return;
+    }
+    bool hit(String k) => prefixes!.any(k.startsWith);
+    _etags.removeWhere((k, _) => hit(k));
+    _etagPayloads.removeWhere((k, _) => hit(k));
   }
 
   Future<dynamic> get(String path) => _send('GET', path);
@@ -37,7 +95,8 @@ class ApiClient {
       _send('POST', path, body);
   Future<dynamic> put(String path, Map<String, dynamic> body) =>
       _send('PUT', path, body);
-  Future<dynamic> delete(String path) => _send('DELETE', path);
+  Future<dynamic> delete(String path, [Map<String, dynamic>? body]) =>
+      _send('DELETE', path, body);
 
   Future<dynamic> _send(
     String method,
@@ -45,17 +104,37 @@ class ApiClient {
     Map<String, dynamic>? body,
   ]) async {
     final uri = Uri.parse('$baseUrl$path');
-    final headers = await _headers();
+    final isGet = method == 'GET';
+    final headers = await _headers(etag: isGet ? _etags[path] : null);
+
     late http.Response response;
     switch (method) {
       case 'POST':
-        response = await http.post(uri, headers: headers, body: jsonEncode(body));
+        _invalidateFor(path);
+        response = await _client
+            .post(uri, headers: headers, body: jsonEncode(body))
+            .timeout(_requestTimeout);
       case 'PUT':
-        response = await http.put(uri, headers: headers, body: jsonEncode(body));
+        _invalidateFor(path);
+        response = await _client
+            .put(uri, headers: headers, body: jsonEncode(body))
+            .timeout(_requestTimeout);
       case 'DELETE':
-        response = await http.delete(uri, headers: headers);
+        _invalidateFor(path);
+        response = await _client
+            .delete(
+              uri,
+              headers: headers,
+              body: body != null ? jsonEncode(body) : null,
+            )
+            .timeout(_requestTimeout);
       default:
-        response = await http.get(uri, headers: headers);
+        response =
+            await _client.get(uri, headers: headers).timeout(_requestTimeout);
+    }
+
+    if (isGet && response.statusCode == 304 && _etagPayloads.containsKey(path)) {
+      return _etagPayloads[path];
     }
 
     dynamic decoded;
@@ -64,12 +143,54 @@ class ApiClient {
     }
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (isGet) {
+        final etag = response.headers['etag'];
+        if (etag != null && etag.isNotEmpty && decoded != null) {
+          _etags[path] = etag;
+          _etagPayloads[path] = decoded;
+        }
+      }
       return decoded;
     }
 
-    final message = decoded is Map && decoded['error'] != null
+    final rawMessage = decoded is Map && decoded['error'] != null
         ? decoded['error'].toString()
-        : 'Ошибка сервера (${response.statusCode})';
+        : AppTr.tr('Ошибка сервера (${response.statusCode})',
+            'Server error (${response.statusCode})');
+    final message = _localizeServerError(rawMessage);
     throw ApiException(message, statusCode: response.statusCode);
+  }
+
+  static const _serverErrorEn = <String, String>{
+    'Укажите имя, логин и пароль': 'Enter name, username, and password',
+    'Пользователь с таким логином уже существует':
+        'An account with this username already exists',
+    'Некорректные данные пользователя': 'Invalid user data',
+    'Укажите логин и пароль': 'Enter username and password',
+    'Неверный логин или пароль': 'Invalid username or password',
+    'Пользователь не найден': 'User not found',
+    'Укажите имя пользователя': 'Enter owner name',
+    'Логин: 3–32 символа, латиница, цифры, . _ -':
+        'Username: 3–32 chars, letters, digits, . _ -',
+    'Новый пароль — минимум 6 символов':
+        'New password must be at least 6 characters',
+    'Введите пароль для подтверждения': 'Enter your password to confirm',
+    'Неверный пароль': 'Incorrect password',
+    'Не авторизован — токен отсутствует': 'Unauthorized — token missing',
+    'Неверный токен': 'Invalid token',
+    'Клиент не найден': 'Customer not found',
+    'Укажите имя': 'Enter name',
+    'Долг не найден': 'Debt not found',
+    'Укажите имя, направление и сумму': 'Enter name, direction, and amount',
+    'Некорректная сумма': 'Invalid amount',
+    'Заказ не найден': 'Order not found',
+    'Укажите название и клиента': 'Enter title and customer',
+    'Укажите сумму, тип и дату': 'Enter amount, type, and date',
+    'Операция не найдена': 'Transaction not found',
+  };
+
+  static String _localizeServerError(String message) {
+    if (!AppTr.isEn) return message;
+    return _serverErrorEn[message] ?? message;
   }
 }

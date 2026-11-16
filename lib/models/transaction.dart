@@ -1,3 +1,5 @@
+import '../l10n/app_tr.dart';
+
 /// Transaction types.
 enum TransactionType {
   income,
@@ -113,7 +115,7 @@ class AppTransaction {
       );
 }
 
-/// Default transaction categories.
+/// Default transaction categories and label helper.
 class TransactionCategories {
   TransactionCategories._();
 
@@ -135,4 +137,51 @@ class TransactionCategories {
     'equipment',
     'other_expense',
   ];
+
+  static const Map<String, String> defaultLabels = {
+    'order_payment': 'Оплата заказа',
+    'service': 'Услуга',
+    'sale': 'Продажа',
+    'refund_received': 'Возврат',
+    'other_income': 'Прочее',
+    'supplies': 'Материалы',
+    'rent': 'Аренда',
+    'utilities': 'Коммуналка',
+    'transport': 'Транспорт',
+    'marketing': 'Маркетинг',
+    'salary': 'Зарплата',
+    'equipment': 'Оборудование',
+    'taxes': 'Налоги',
+    'other_expense': 'Прочее',
+    'debt_received': 'Возврат долга',
+    'debt_paid': 'Выплата долга',
+    'other': 'Другое',
+  };
+
+  static const Map<String, String> defaultLabelsEn = {
+    'order_payment': 'Order payment',
+    'service': 'Service',
+    'sale': 'Sale',
+    'refund_received': 'Refund',
+    'other_income': 'Other',
+    'supplies': 'Supplies',
+    'rent': 'Rent',
+    'utilities': 'Utilities',
+    'transport': 'Transport',
+    'marketing': 'Marketing',
+    'salary': 'Salary',
+    'equipment': 'Equipment',
+    'taxes': 'Taxes',
+    'other_expense': 'Other',
+    'debt_received': 'Debt repayment',
+    'debt_paid': 'Debt payment',
+    'other': 'Other',
+  };
+
+  static final Map<String, String> customLabels = {};
+
+  static String labelFor(String key) =>
+      customLabels[key] ??
+      (AppTr.isEn ? defaultLabelsEn[key] : defaultLabels[key]) ??
+      key;
 }

@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../providers/finance_provider.dart';
+import '../../providers/order_provider.dart';
+import '../../providers/customer_provider.dart';
+import '../../providers/debt_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/transaction.dart';
 import '../../services/financial_calculator.dart';
@@ -12,7 +18,10 @@ import '../../components/app_card.dart';
 import '../../components/app_empty_state.dart';
 import '../../components/finance_bar_chart.dart';
 import '../../components/app_skeleton.dart';
-import '../../components/app_templates.dart';
+
+const double _kHomePadding = 20.0;
+
+enum _ActivityFilter { all, income, expense }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,13 +30,58 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entranceController;
+  _ActivityFilter _activityFilter = _ActivityFilter.all;
+  bool _hideBalances = false;
+
   @override
   void initState() {
     super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DashboardProvider>().load();
+      _loadHomeAndPrefetch();
+      _entranceController.forward();
     });
+  }
+
+  Future<void> _loadHomeAndPrefetch() async {
+    if (!mounted) return;
+    final dashboard = context.read<DashboardProvider>();
+    final finance = context.read<FinanceProvider>();
+    final orders = context.read<OrderProvider>();
+    final customers = context.read<CustomerProvider>();
+    final debts = context.read<DebtProvider>();
+
+    // Priority 1: load only the visible Home screen data first
+    await dashboard.load();
+    if (!mounted) return;
+
+    // Priority 2: prefetch page 1 of the other tabs in parallel
+    await Future.wait([
+      finance.prefetchIfNeeded(),
+      orders.prefetchIfNeeded(),
+      customers.prefetchIfNeeded(),
+      debts.prefetchIfNeeded(),
+    ]);
+  }
+
+  @override
+  void dispose() {
+    _entranceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pushAndReload(String route) async {
+    HapticFeedback.lightImpact();
+    await context.push(route);
+    if (mounted) {
+      context.read<DashboardProvider>().reload();
+    }
   }
 
   @override
@@ -37,138 +91,320 @@ class _HomeScreenState extends State<HomeScreen> {
     final settings = context.watch<SettingsProvider>();
     final currency = settings.currency;
 
+    final filteredActivity = switch (_activityFilter) {
+      _ActivityFilter.all => dashboard.recentActivity,
+      _ActivityFilter.income => dashboard.recentActivity
+          .where((t) => t.type == TransactionType.income)
+          .toList(),
+      _ActivityFilter.expense => dashboard.recentActivity
+          .where((t) => t.type == TransactionType.expense)
+          .toList(),
+    };
+
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
         child: RefreshIndicator(
           color: colors.primary,
-          onRefresh: () => context.read<DashboardProvider>().reload(),
+          backgroundColor: colors.surface,
+          onRefresh: () async {
+            HapticFeedback.mediumImpact();
+            await context.read<DashboardProvider>().reload();
+          },
           child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             slivers: [
-              // ── Header ────────────────────────────────────────────────────
+              // ── 1. Modern Header ──────────────────────────────────────────
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, 0),
-                  child: _Header(dashboard: dashboard),
-                ),
-              ),
-
-              // ── Financial summary ─────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, 0),
-                  child: _FinancialCard(
-                      dashboard: dashboard, currency: currency),
-                ),
-              ),
-
-              // ── Quick stats row ───────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.xl, AppSpacing.md, AppSpacing.xl, 0),
-                  child: _QuickStats(
-                      dashboard: dashboard, currency: currency),
-                ),
-              ),
-
-              // ── Bar chart ─────────────────────────────────────────────────
-              if (dashboard.chartData.isNotEmpty)
-                SliverToBoxAdapter(
+                child: _StaggeredEntrance(
+                  controller: _entranceController,
+                  index: 0,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _SectionTitle(
-                          title: 'Динамика месяца',
-                          action: null,
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        AppCard(
-                          child: FinanceBarChart(
-                            dailyData: dashboard.chartData,
-                            year: dashboard.year,
-                            month: dashboard.month,
-                            currency: currency,
-                          ),
-                        ),
-                      ],
+                      _kHomePadding,
+                      AppSpacing.md,
+                      _kHomePadding,
+                      0,
                     ),
-                  ),
-                ),
-
-              // ── Recent activity header ────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, AppSpacing.sm),
-                  child: _SectionTitle(
-                    title: 'Последние операции',
-                    action: () => context.go('/finance'),
-                    actionLabel: 'Все',
+                    child: _Header(dashboard: dashboard),
                   ),
                 ),
               ),
 
-              // ── Activity list ─────────────────────────────────────────────
-              if (dashboard.isLoading)
-                SliverToBoxAdapter(
+              // ── 2. Hero Financial Bento Card ──────────────────────────────
+              SliverToBoxAdapter(
+                child: _StaggeredEntrance(
+                  controller: _entranceController,
+                  index: 1,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.xl),
-                    child: AppCard(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
-                      child: const AppSkeletonList(count: 3),
+                    padding: const EdgeInsets.fromLTRB(
+                      _kHomePadding,
+                      AppSpacing.md,
+                      _kHomePadding,
+                      0,
+                    ),
+                    child: RepaintBoundary(
+                      child: _HeroFinancialCard(
+                        dashboard: dashboard,
+                        currency: currency,
+                        hideBalances: _hideBalances,
+                        onTogglePrivacy: () {
+                          HapticFeedback.selectionClick();
+                          setState(() => _hideBalances = !_hideBalances);
+                        },
+                      ),
                     ),
                   ),
-                )
-              else if (dashboard.recentActivity.isEmpty)
-                SliverToBoxAdapter(
-                  child: AppEmptyState(
-                    icon: Icons.receipt_long_outlined,
-                    title: 'За этот месяц операций нет',
-                    subtitle: 'Доход и расход добавляются в разделе «Деньги»',
-                    actionLabel: 'Открыть Деньги',
-                    onAction: () => context.go('/finance'),
-                  ),
-                )
-              else
-                SliverToBoxAdapter(
+                ),
+              ),
+
+              // ── 3. Quick Actions Dock ─────────────────────────────────────
+              SliverToBoxAdapter(
+                child: _StaggeredEntrance(
+                  controller: _entranceController,
+                  index: 2,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.xl),
-                    child: AppCard(
-                      padding: EdgeInsets.zero,
+                    padding: const EdgeInsets.fromLTRB(
+                      _kHomePadding,
+                      AppSpacing.md,
+                      _kHomePadding,
+                      0,
+                    ),
+                    child: _QuickActionsDock(onAction: _pushAndReload),
+                  ),
+                ),
+              ),
+
+              // ── 4. Bento Business Overview ────────────────────────────────
+              SliverToBoxAdapter(
+                child: _StaggeredEntrance(
+                  controller: _entranceController,
+                  index: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      _kHomePadding,
+                      AppSpacing.lg,
+                      _kHomePadding,
+                      0,
+                    ),
+                    child: _BentoStatsSection(
+                      dashboard: dashboard,
+                      currency: currency,
+                      hideBalances: _hideBalances,
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── 5. Month Dynamics Chart ───────────────────────────────────
+              if (dashboard.chartData.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _StaggeredEntrance(
+                    controller: _entranceController,
+                    index: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        _kHomePadding,
+                        AppSpacing.lg,
+                        _kHomePadding,
+                        0,
+                      ),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (int i = 0;
-                              i < dashboard.recentActivity.length;
-                              i++) ...[
-                            if (i > 0)
-                              Divider(
-                                height: 1,
-                                indent: AppSpacing.lg,
-                                endIndent: AppSpacing.lg,
-                                color: colors.divider,
-                              ),
-                            _ActivityTile(
-                              tx: dashboard.recentActivity[i],
-                              currency: currency,
+                          _SectionHeader(
+                            title: context.tr('Динамика месяца', 'Monthly dynamics'),
+                            subtitle: context.tr(
+                              'Поток средств по дням',
+                              'Daily cash flow',
                             ),
-                          ],
+                            actionLabel: context.tr('Отчёт', 'Report'),
+                            actionIcon: Icons.analytics_outlined,
+                            onAction: () => context.go(
+                              '/profile/reports/${dashboard.year}/${dashboard.month}',
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          RepaintBoundary(
+                            child: AppCard(
+                              padding: const EdgeInsets.all(AppSpacing.md),
+                              radius: AppRadius.cardLarge,
+                              child: FinanceBarChart(
+                                dailyData: dashboard.chartData,
+                                year: dashboard.year,
+                                month: dashboard.month,
+                                currency: currency,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
                 ),
 
+              // ── 6. Recent Activity Section ────────────────────────────────
+              SliverToBoxAdapter(
+                child: _StaggeredEntrance(
+                  controller: _entranceController,
+                  index: 5,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      _kHomePadding,
+                      AppSpacing.lg,
+                      _kHomePadding,
+                      AppSpacing.sm,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SectionHeader(
+                          title: context.tr(
+                            'Последние операции',
+                            'Recent transactions',
+                          ),
+                          actionLabel: context.tr('Все', 'All'),
+                          onAction: () => context.go('/finance'),
+                        ),
+                        if (dashboard.recentActivity.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.sm),
+                          _ActivityFilterBar(
+                            selected: _activityFilter,
+                            allCount: dashboard.recentActivity.length,
+                            incomeCount: dashboard.recentActivity
+                                .where((t) => t.type == TransactionType.income)
+                                .length,
+                            expenseCount: dashboard.recentActivity
+                                .where((t) => t.type == TransactionType.expense)
+                                .length,
+                            onChanged: (filter) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _activityFilter = filter);
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── 7. Activity List Body ─────────────────────────────────────
+              SliverToBoxAdapter(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  layoutBuilder: (currentChild, previousChildren) => Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      ...previousChildren,
+                      if (currentChild != null) currentChild,
+                    ],
+                  ),
+                  child: (dashboard.isLoading &&
+                          dashboard.recentActivity.isEmpty)
+                      ? const Padding(
+                          key: ValueKey('activity-skeleton'),
+                          padding:
+                              EdgeInsets.symmetric(horizontal: _kHomePadding),
+                          child: AppSkeletonList(count: 3),
+                        )
+                      : dashboard.recentActivity.isEmpty
+                          ? Padding(
+                              key: const ValueKey('activity-empty'),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: _kHomePadding),
+                              child: AppEmptyState(
+                                icon: Icons.receipt_long_outlined,
+                                title: context.tr(
+                                  'За этот месяц операций нет',
+                                  'No transactions this month',
+                                ),
+                                subtitle: context.tr(
+                                  'Добавьте первый доход или расход с помощью быстрых кнопок выше',
+                                  'Add your first income or expense using the quick actions above',
+                                ),
+                                actionLabel: context.tr(
+                                  'Открыть Деньги',
+                                  'Open Finance',
+                                ),
+                                onAction: () => context.go('/finance'),
+                              ),
+                            )
+                          : filteredActivity.isEmpty
+                              ? Padding(
+                                  key: ValueKey(
+                                      'activity-filtered-empty-${_activityFilter.name}'),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: _kHomePadding,
+                                    vertical: AppSpacing.lg,
+                                  ),
+                                  child: AppCard(
+                                    radius: AppRadius.cardLarge,
+                                    child: Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: AppSpacing.md),
+                                        child: Text(
+                                          _activityFilter ==
+                                                  _ActivityFilter.income
+                                              ? context.tr(
+                                                  'Нет операций дохода в списке последних',
+                                                  'No income transactions in recent activity',
+                                                )
+                                              : context.tr(
+                                                  'Нет операций расхода в списке последних',
+                                                  'No expense transactions in recent activity',
+                                                ),
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: colors.textMuted,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Padding(
+                                  key: ValueKey(
+                                      'activity-list-${_activityFilter.name}'),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: _kHomePadding),
+                                  child: AppCard(
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 4),
+                                    radius: AppRadius.cardLarge,
+                                    child: Column(
+                                      children: [
+                                        for (int i = 0;
+                                            i < filteredActivity.length;
+                                            i++) ...[
+                                          if (i > 0)
+                                            Divider(
+                                              height: 1,
+                                              indent: 64,
+                                              endIndent: AppSpacing.md,
+                                              color: colors.divider
+                                                  .withValues(alpha: 0.7),
+                                            ),
+                                          _ActivityTile(
+                                            tx: filteredActivity[i],
+                                            currency: currency,
+                                            hideBalances: _hideBalances,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                ),
+              ),
+
               const SliverToBoxAdapter(
-                child: SizedBox(height: AppSpacing.xxxl + 60),
+                child: SizedBox(height: AppSpacing.xxxl + 40),
               ),
             ],
           ),
@@ -178,39 +414,198 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ─── Section title ────────────────────────────────────────────────────────────
+// ─── Lightweight Staggered Entrance Wrapper ───────────────────────────────────
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, this.action, this.actionLabel});
+class _StaggeredEntrance extends StatelessWidget {
+  const _StaggeredEntrance({
+    required this.controller,
+    required this.index,
+    required this.child,
+  });
+
+  final AnimationController controller;
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = (index * 0.06).clamp(0.0, 0.36);
+    final end = (start + 0.64).clamp(0.0, 1.0);
+    final curved = CurvedAnimation(
+      parent: controller,
+      curve: Interval(start, end, curve: Curves.easeOutCubic),
+    );
+
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.02),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
+    );
+  }
+}
+
+// ─── Lightweight Tactile Scale Wrapper ────────────────────────────────────────
+
+class _ScaleTap extends StatefulWidget {
+  const _ScaleTap({
+    required this.child,
+    required this.onTap,
+    this.scaleDown = 0.97,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final double scaleDown;
+
+  @override
+  State<_ScaleTap> createState() => _ScaleTapState();
+}
+
+class _ScaleTapState extends State<_ScaleTap> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.onTap == null) return widget.child;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? widget.scaleDown : 1.0,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOutCubic,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+// ─── Smooth Animated Money Text ───────────────────────────────────────────────
+
+class _AnimatedMoneyText extends StatelessWidget {
+  const _AnimatedMoneyText({
+    required this.cents,
+    required this.currency,
+    required this.style,
+    this.prefix = '',
+    this.hide = false,
+  });
+
+  final int cents;
+  final String currency;
+  final TextStyle style;
+  final String prefix;
+  final bool hide;
+
+  @override
+  Widget build(BuildContext context) {
+    if (hide) {
+      return Text('•••••• $currency', style: style);
+    }
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: cents.toDouble()),
+      duration: const Duration(milliseconds: 340),
+      curve: Curves.easeOutCubic,
+      builder: (context, val, _) {
+        final formatted = FinancialCalculator.formatCents(
+          val.round(),
+          currency: currency,
+        );
+        return Text('$prefix$formatted', style: style);
+      },
+    );
+  }
+}
+
+// ─── Section Header ───────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    this.subtitle,
+    this.actionLabel,
+    this.actionIcon,
+    this.onAction,
+  });
+
   final String title;
-  final VoidCallback? action;
+  final String? subtitle;
   final String? actionLabel;
+  final IconData? actionIcon;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
-          child: Text(
-            title,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
-              color: colors.textPrimary,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                  color: colors.textPrimary,
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 1),
+                Text(
+                  subtitle!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.textMuted,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (action != null)
-          GestureDetector(
-            onTap: action,
-            child: Text(
-              actionLabel ?? 'Все',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: colors.primary,
+        if (onAction != null && actionLabel != null)
+          _ScaleTap(
+            onTap: onAction,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: colors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (actionIcon != null) ...[
+                    Icon(actionIcon, size: 13, color: colors.primary),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    actionLabel!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: colors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 15,
+                    color: colors.primary,
+                  ),
+                ],
               ),
             ),
           ),
@@ -225,6 +620,27 @@ class _Header extends StatelessWidget {
   const _Header({required this.dashboard});
   final DashboardProvider dashboard;
 
+  IconData _greetingIcon() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return Icons.wb_sunny_rounded;
+    if (hour < 18) return Icons.light_mode_rounded;
+    return Icons.nights_stay_rounded;
+  }
+
+  void _shiftMonth(BuildContext context, int delta) {
+    HapticFeedback.selectionClick();
+    var m = dashboard.month + delta;
+    var y = dashboard.year;
+    if (m > 12) {
+      m = 1;
+      y++;
+    } else if (m < 1) {
+      m = 12;
+      y--;
+    }
+    dashboard.setMonth(y, m);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -233,89 +649,163 @@ class _Header extends StatelessWidget {
         ? settings.settings.businessName
         : settings.settings.ownerName.isNotEmpty
             ? settings.settings.ownerName
-            : 'Бизнес';
+            : context.tr('Мой бизнес', 'My business');
 
-    final now = DateTime(dashboard.year, dashboard.month);
+    final selectedDate = DateTime(dashboard.year, dashboard.month);
 
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Avatar circle
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.primary, AppColors.primaryDark],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : 'B',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
+        // Profile / Business Identity
+        Expanded(
+          child: _ScaleTap(
+            onTap: () => context.go('/profile'),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F766E), Color(0xFF134E4A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.22),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : 'B',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _greetingIcon(),
+                            size: 12,
+                            color: AppColors.warning,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              DateHelper.greeting(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: colors.textMuted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
-                  color: colors.textPrimary,
-                ),
-              ),
-              Text(
-                DateHelper.greeting(),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: colors.textMuted,
-                ),
+        const SizedBox(width: 8),
+
+        // Interactive Month Stepper + Picker Pill
+        Container(
+          height: 38,
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colors.border),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.ink.withValues(alpha: 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-        ),
-        // Month pill
-        GestureDetector(
-          onTap: () => _pickMonth(context),
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: colors.border),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.calendar_today_rounded,
-                    size: 12, color: colors.primary),
-                const SizedBox(width: 5),
-                Text(
-                  DateHelper.formatMonthYear(now),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _shiftMonth(context, -1),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Icon(
+                    Icons.chevron_left_rounded,
+                    size: 18,
+                    color: colors.textSecondary,
                   ),
                 ),
-                const SizedBox(width: 2),
-                Icon(Icons.keyboard_arrow_down_rounded,
-                    size: 14, color: colors.textMuted),
-              ],
-            ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _pickMonth(context),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.calendar_month_rounded,
+                        size: 14,
+                        color: colors.primary,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        DateHelper.formatMonthYear(selectedDate),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _shiftMonth(context, 1),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -323,12 +813,38 @@ class _Header extends StatelessWidget {
   }
 
   Future<void> _pickMonth(BuildContext context) async {
+    HapticFeedback.selectionClick();
     final dashboard = context.read<DashboardProvider>();
-    final year = dashboard.year;
-    const months = [
-      'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
-      'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'
-    ];
+    var selectedYear = dashboard.year;
+    final months = context.isEn
+        ? const [
+            'January',
+            'February',
+            'March',
+            'April',
+            'May',
+            'June',
+            'July',
+            'August',
+            'September',
+            'October',
+            'November',
+            'December',
+          ]
+        : const [
+            'Январь',
+            'Февраль',
+            'Март',
+            'Апрель',
+            'Май',
+            'Июнь',
+            'Июль',
+            'Август',
+            'Сентябрь',
+            'Октябрь',
+            'Ноябрь',
+            'Декабрь',
+          ];
     final colors = context.appColors;
 
     await showModalBottomSheet(
@@ -338,63 +854,459 @@ class _Header extends StatelessWidget {
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(
-            AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, AppSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Выберите месяц',
-              style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: colors.textPrimary),
+      builder: (_) => StatefulBuilder(
+        builder: (modalContext, setModalState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              _kHomePadding,
+              AppSpacing.md,
+              _kHomePadding,
+              AppSpacing.lg,
             ),
-            const SizedBox(height: AppSpacing.lg),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                childAspectRatio: 2.4,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              itemCount: 12,
-              itemBuilder: (_, i) {
-                final selected = (i + 1) == dashboard.month;
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                    dashboard.setMonth(year, i + 1);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? AppColors.primary
-                          : colors.surfaceSecondary,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      months[i],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle bar
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    Text(
+                      context.tr('Период обзора', 'Reporting period'),
                       style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: selected
-                            ? Colors.white
-                            : colors.textSecondary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: colors.textPrimary,
                       ),
                     ),
+                    const Spacer(),
+                    // Year selector
+                    Container(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceSecondary,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () =>
+                                setModalState(() => selectedYear--),
+                            icon: const Icon(Icons.remove_rounded, size: 16),
+                          ),
+                          Text(
+                            '$selectedYear',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () =>
+                                setModalState(() => selectedYear++),
+                            icon: const Icon(Icons.add_rounded, size: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    childAspectRatio: 2.5,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
                   ),
-                );
-              },
+                  itemCount: 12,
+                  itemBuilder: (_, i) {
+                    final selected = (i + 1) == dashboard.month &&
+                        selectedYear == dashboard.year;
+                    return GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        Navigator.pop(modalContext);
+                        dashboard.setMonth(selectedYear, i + 1);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppColors.primary
+                              : colors.surfaceSecondary,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color:
+                                selected ? AppColors.primary : colors.border,
+                          ),
+                        ),
+                        child: Text(
+                          months[i],
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w600,
+                            color: selected
+                                ? Colors.white
+                                : colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
-            const SizedBox(height: AppSpacing.md),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Hero Financial Bento Card ────────────────────────────────────────────────
+
+class _HeroFinancialCard extends StatelessWidget {
+  const _HeroFinancialCard({
+    required this.dashboard,
+    required this.currency,
+    required this.hideBalances,
+    required this.onTogglePrivacy,
+  });
+
+  final DashboardProvider dashboard;
+  final String currency;
+  final bool hideBalances;
+  final VoidCallback onTogglePrivacy;
+
+  @override
+  Widget build(BuildContext context) {
+    final net = dashboard.netCents;
+    final income = dashboard.incomeCents;
+    final expense = dashboard.expenseCents;
+    final totalFlow = income + expense;
+    final incomeShare = totalFlow > 0 ? (income / totalFlow).clamp(0.0, 1.0) : 0.5;
+    final isPositive = net >= 0;
+
+    final marginPct = income > 0
+        ? ((net / income) * 100).clamp(-999.0, 100.0)
+        : 0.0;
+
+    final netAccent = isPositive
+        ? const Color(0xFF34D399)
+        : const Color(0xFFFB7185);
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF09191F),
+            Color(0xFF0E3735),
+            Color(0xFF115E59),
+          ],
+          stops: [0.0, 0.55, 1.0],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryDeep.withValues(alpha: 0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: CustomPaint(
+          painter: const _HeroDecorPainter(),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top status & privacy row
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: netAccent.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: netAccent.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: netAccent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            isPositive
+                                ? context.tr('Чистая прибыль', 'Net profit')
+                                : context.tr('Убыток месяца', 'Monthly loss'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: netAccent,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (income > 0 && !hideBalances) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${marginPct >= 0 ? '+' : ''}${marginPct.toStringAsFixed(0)}% ${context.tr('маржа', 'margin')}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: onTogglePrivacy,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          hideBalances
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          size: 16,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Main Net Balance (Auto-scales so it never overflows)
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: _AnimatedMoneyText(
+                    cents: net.abs(),
+                    currency: currency,
+                    prefix: net < 0 ? '−' : (net > 0 ? '+' : ''),
+                    hide: hideBalances,
+                    style: const TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -1.2,
+                      height: 1.1,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Cashflow Split Progress Bar
+                TweenAnimationBuilder<double>(
+                  tween: Tween<double>(end: incomeShare),
+                  duration: const Duration(milliseconds: 550),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, animatedShare, _) {
+                    return Column(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: SizedBox(
+                            height: 6,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  flex: (animatedShare * 1000)
+                                      .round()
+                                      .clamp(1, 999),
+                                  child: Container(
+                                    color: const Color(0xFF34D399),
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  flex: ((1.0 - animatedShare) * 1000)
+                                      .round()
+                                      .clamp(1, 999),
+                                  child: Container(
+                                    color: totalFlow > 0
+                                        ? const Color(0xFFFB7185)
+                                        : Colors.white24,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Income & Expense Sub-cards (Zero overflow guaranteed)
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HeroSubMetric(
+                        label: context.tr('Доходы', 'Income'),
+                        cents: income,
+                        currency: currency,
+                        hideBalances: hideBalances,
+                        accentColor: const Color(0xFF34D399),
+                        icon: Icons.south_west_rounded,
+                        onTap: () => context.go('/finance'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _HeroSubMetric(
+                        label: context.tr('Расходы', 'Expenses'),
+                        cents: expense,
+                        currency: currency,
+                        hideBalances: hideBalances,
+                        accentColor: const Color(0xFFFB7185),
+                        icon: Icons.north_east_rounded,
+                        onTap: () => context.go('/finance'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroSubMetric extends StatelessWidget {
+  const _HeroSubMetric({
+    required this.label,
+    required this.cents,
+    required this.currency,
+    required this.hideBalances,
+    required this.accentColor,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final int cents;
+  final String currency;
+  final bool hideBalances;
+  final Color accentColor;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ScaleTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.11),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(icon, size: 13, color: accentColor),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.65),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: _AnimatedMoneyText(
+                cents: cents,
+                currency: currency,
+                hide: hideBalances,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -402,194 +1314,35 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ─── Financial summary card ───────────────────────────────────────────────────
-
-class _FinancialCard extends StatelessWidget {
-  const _FinancialCard({required this.dashboard, required this.currency});
-  final DashboardProvider dashboard;
-  final String currency;
+/// Lightweight decorative circles painted on GPU without blur filters.
+class _HeroDecorPainter extends CustomPainter {
+  const _HeroDecorPainter();
 
   @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final net = dashboard.netCents;
-    final isPositive = net >= 0;
-    final netColor = isPositive
-        ? const Color(0xFF34D399)
-        : const Color(0xFFFB7185);
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = Colors.white.withValues(alpha: 0.05);
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F2027), Color(0xFF134E4A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(AppRadius.cardLarge),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryDeep.withValues(alpha: 0.30),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Label row
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  isPositive ? 'Прибыль' : 'Убыток',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFD1FAE5),
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Text(
-                'за месяц',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.45),
-                ),
-              ),
-            ],
-          ),
+    canvas.drawCircle(Offset(size.width * 0.9, -size.height * 0.1), 90, paint);
+    canvas.drawCircle(Offset(size.width * 0.9, -size.height * 0.1), 135, paint);
 
-          const SizedBox(height: AppSpacing.md),
-
-          // Net amount
-          Text(
-            FinancialCalculator.formatCents(net.abs(), currency: currency),
-            style: TextStyle(
-              fontSize: 36,
-              fontWeight: FontWeight.w800,
-              color: netColor,
-              letterSpacing: -1.5,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-
-          const SizedBox(height: AppSpacing.lg),
-
-          // Divider
-          Divider(color: Colors.white.withValues(alpha: 0.10), height: 1),
-
-          const SizedBox(height: AppSpacing.lg),
-
-          // Income / Expense row
-          Row(
-            children: [
-              Expanded(
-                child: _FinRow(
-                  label: 'Доходы',
-                  value: FinancialCalculator.formatCents(
-                      dashboard.incomeCents, currency: currency),
-                  color: colors.income,
-                  icon: Icons.arrow_downward_rounded,
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 36,
-                color: Colors.white.withValues(alpha: 0.10),
-              ),
-              Expanded(
-                child: _FinRow(
-                  label: 'Расходы',
-                  value: FinancialCalculator.formatCents(
-                      dashboard.expenseCents, currency: currency),
-                  color: const Color(0xFFFB7185),
-                  icon: Icons.arrow_upward_rounded,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+    final glowPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFF14B8A6).withValues(alpha: 0.07);
+    canvas.drawCircle(Offset(size.width * 0.85, size.height * 0.15), 70, glowPaint);
   }
-}
-
-class _FinRow extends StatelessWidget {
-  const _FinRow({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.icon,
-  });
-  final String label;
-  final String value;
-  final Color color;
-  final IconData icon;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 13, color: color),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white.withValues(alpha: 0.45),
-                  letterSpacing: 0.2,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// ─── Quick stats ──────────────────────────────────────────────────────────────
+// ─── Quick Actions Dock ───────────────────────────────────────────────────────
 
-class _QuickStats extends StatelessWidget {
-  const _QuickStats({required this.dashboard, required this.currency});
-  final DashboardProvider dashboard;
-  final String currency;
+class _QuickActionsDock extends StatelessWidget {
+  const _QuickActionsDock({required this.onAction});
+  final Future<void> Function(String route) onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -598,33 +1351,38 @@ class _QuickStats extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: _StatTile(
-            icon: Icons.receipt_long_rounded,
-            label: 'Заказы',
-            value: '${dashboard.activeOrdersCount}',
-            color: colors.primary,
-            onTap: () => context.go('/orders'),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: _StatTile(
-            icon: Icons.account_balance_wallet_outlined,
-            label: 'Долги',
-            value: FinancialCalculator.formatCentsCompact(
-                dashboard.receivableCents, currency: currency),
-            color: colors.warning,
-            onTap: () => context.go('/profile/debts'),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: _StatTile(
-            icon: Icons.people_outline_rounded,
-            label: 'Клиенты',
-            value: '${dashboard.totalCustomersCount}',
+          child: _QuickActionBtn(
+            icon: Icons.add_circle_outline_rounded,
+            label: context.tr('Доход', 'Income'),
             color: colors.income,
-            onTap: () => context.go('/profile/customers'),
+            onTap: () => onAction('/finance/new?type=income'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _QuickActionBtn(
+            icon: Icons.remove_circle_outline_rounded,
+            label: context.tr('Расход', 'Expense'),
+            color: colors.expense,
+            onTap: () => onAction('/finance/new?type=expense'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _QuickActionBtn(
+            icon: Icons.receipt_long_outlined,
+            label: context.tr('Заказ', 'Order'),
+            color: colors.primary,
+            onTap: () => onAction('/orders/new'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _QuickActionBtn(
+            icon: Icons.account_balance_wallet_outlined,
+            label: context.tr('Долг', 'Debt'),
+            color: colors.warning,
+            onTap: () => onAction('/profile/debts/new'),
           ),
         ),
       ],
@@ -632,17 +1390,16 @@ class _QuickStats extends StatelessWidget {
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({
+class _QuickActionBtn extends StatelessWidget {
+  const _QuickActionBtn({
     required this.icon,
     required this.label,
-    required this.value,
     required this.color,
     required this.onTap,
   });
+
   final IconData icon;
   final String label;
-  final String value;
   final Color color;
   final VoidCallback onTap;
 
@@ -650,55 +1407,566 @@ class _StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
-    return AppCard(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.md),
+    return _ScaleTap(
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(10),
+      scaleDown: 0.94,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 6),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colors.border),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.ink.withValues(alpha: 0.025),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
-            child: Icon(icon, size: 17, color: color),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: colors.textPrimary,
-              letterSpacing: -0.3,
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(icon, size: 18, color: color),
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: colors.textMuted,
+            const SizedBox(height: 6),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-// ─── Activity tile ────────────────────────────────────────────────────────────
+// ─── Bento Business Overview Section ──────────────────────────────────────────
+
+class _BentoStatsSection extends StatelessWidget {
+  const _BentoStatsSection({
+    required this.dashboard,
+    required this.currency,
+    required this.hideBalances,
+  });
+
+  final DashboardProvider dashboard;
+  final String currency;
+  final bool hideBalances;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          title: context.tr('Показатели бизнеса', 'Business overview'),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+
+        // Top Row: Orders & Customers
+        Row(
+          children: [
+            Expanded(
+              child: _BentoMetricTile(
+                icon: Icons.shopping_bag_outlined,
+                badgeText: context.tr('В работе', 'Active'),
+                title: context.tr('Заказы', 'Orders'),
+                value: '${dashboard.activeOrdersCount}',
+                accentColor: colors.primary,
+                onTap: () => context.go('/orders'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _BentoMetricTile(
+                icon: Icons.people_alt_outlined,
+                badgeText: context.tr('База', 'Base'),
+                title: context.tr('Клиенты', 'Customers'),
+                value: '${dashboard.totalCustomersCount}',
+                accentColor: colors.income,
+                onTap: () => context.go('/profile/customers'),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 10),
+
+        // Bottom Wide Bento Card: Debts Balance (Receivable & Payable)
+        _ScaleTap(
+          onTap: () => context.go('/profile/debts'),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.cardLarge),
+              border: Border.all(color: colors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.ink.withValues(alpha: 0.03),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: colors.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 18,
+                        color: colors.warning,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            context.tr('Контроль долгов', 'Debt tracker'),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            context.tr(
+                              'Дебиторская и кредиторская задолженность',
+                              'Receivables & payables balance',
+                            ),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 13,
+                      color: colors.textMuted,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: colors.background,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.tr('Нам должны', 'Owed to us'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: colors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: _AnimatedMoneyText(
+                                cents: dashboard.receivableCents,
+                                currency: currency,
+                                hide: hideBalances,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: dashboard.receivableCents > 0
+                                      ? colors.warning
+                                      : colors.textPrimary,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures()
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 28,
+                        margin: const EdgeInsets.symmetric(horizontal: 12),
+                        color: colors.border,
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.tr('Мы должны', 'We owe'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: colors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: _AnimatedMoneyText(
+                                cents: dashboard.payableCents,
+                                currency: currency,
+                                hide: hideBalances,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: dashboard.payableCents > 0
+                                      ? colors.expense
+                                      : colors.textPrimary,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures()
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BentoMetricTile extends StatelessWidget {
+  const _BentoMetricTile({
+    required this.icon,
+    required this.badgeText,
+    required this.title,
+    required this.value,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String badgeText;
+  final String title;
+  final String value;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return _ScaleTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.cardLarge),
+          border: Border.all(color: colors.border),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.ink.withValues(alpha: 0.03),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(icon, size: 18, color: accentColor),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: accentColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.6,
+                height: 1.1,
+                color: colors.textPrimary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textMuted,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 11,
+                  color: colors.textMuted,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Activity Filter Bar ──────────────────────────────────────────────────────
+
+class _ActivityFilterBar extends StatelessWidget {
+  const _ActivityFilterBar({
+    required this.selected,
+    required this.allCount,
+    required this.incomeCount,
+    required this.expenseCount,
+    required this.onChanged,
+  });
+
+  final _ActivityFilter selected;
+  final int allCount;
+  final int incomeCount;
+  final int expenseCount;
+  final ValueChanged<_ActivityFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _FilterChipPill(
+          label: context.tr('Все', 'All'),
+          count: allCount,
+          active: selected == _ActivityFilter.all,
+          onTap: () => onChanged(_ActivityFilter.all),
+        ),
+        const SizedBox(width: 8),
+        _FilterChipPill(
+          label: context.tr('Доходы', 'Income'),
+          count: incomeCount,
+          active: selected == _ActivityFilter.income,
+          accentColor: AppColors.income,
+          onTap: () => onChanged(_ActivityFilter.income),
+        ),
+        const SizedBox(width: 8),
+        _FilterChipPill(
+          label: context.tr('Расходы', 'Expenses'),
+          count: expenseCount,
+          active: selected == _ActivityFilter.expense,
+          accentColor: AppColors.expense,
+          onTap: () => onChanged(_ActivityFilter.expense),
+        ),
+      ],
+    );
+  }
+}
+
+class _FilterChipPill extends StatelessWidget {
+  const _FilterChipPill({
+    required this.label,
+    required this.count,
+    required this.active,
+    required this.onTap,
+    this.accentColor,
+  });
+
+  final String label;
+  final int count;
+  final bool active;
+  final VoidCallback onTap;
+  final Color? accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final activeBg = accentColor ?? colors.primary;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? activeBg : colors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active ? activeBg : colors.border,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: active ? Colors.white : colors.textSecondary,
+              ),
+              child: Text(label),
+            ),
+            const SizedBox(width: 6),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: active
+                    ? Colors.white.withValues(alpha: 0.22)
+                    : colors.surfaceSecondary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: active ? Colors.white : colors.textMuted,
+                ),
+                child: Text('$count'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Enriched Activity Tile ───────────────────────────────────────────────────
 
 class _ActivityTile extends StatelessWidget {
-  const _ActivityTile({required this.tx, required this.currency});
+  const _ActivityTile({
+    required this.tx,
+    required this.currency,
+    required this.hideBalances,
+  });
+
   final AppTransaction tx;
   final String currency;
+  final bool hideBalances;
+
+  static String _categoryLabel(String? category, String? linkedType) {
+    if (linkedType == 'order_payment') return AppTr.tr('Заказ', 'Order');
+    if (linkedType == 'debt_payment') return AppTr.tr('Долг', 'Debt');
+    return switch (category) {
+      'order_payment' => AppTr.tr('Заказ', 'Order'),
+      'service' => AppTr.tr('Услуга', 'Service'),
+      'sale' => AppTr.tr('Продажа', 'Sale'),
+      'refund_received' => AppTr.tr('Возврат', 'Refund'),
+      'other_income' => AppTr.tr('Доход', 'Income'),
+      'supplies' => AppTr.tr('Материалы', 'Supplies'),
+      'rent' => AppTr.tr('Аренда', 'Rent'),
+      'utilities' => AppTr.tr('Коммуналка', 'Utilities'),
+      'transport' => AppTr.tr('Транспорт', 'Transport'),
+      'marketing' => AppTr.tr('Маркетинг', 'Marketing'),
+      'salary' => AppTr.tr('Зарплата', 'Salary'),
+      'equipment' => AppTr.tr('Оборудование', 'Equipment'),
+      'other_expense' => AppTr.tr('Расход', 'Expense'),
+      'debt_received' => AppTr.tr('Долг', 'Debt'),
+      'debt_paid' => AppTr.tr('Выплата долга', 'Debt payment'),
+      _ => AppTr.tr('Операция', 'Transaction'),
+    };
+  }
+
+  static IconData _categoryIcon(
+    String? category,
+    String? linkedType,
+    bool isIncome,
+  ) {
+    if (linkedType == 'order_payment' || category == 'order_payment') {
+      return Icons.shopping_bag_outlined;
+    }
+    if (linkedType == 'debt_payment' ||
+        category == 'debt_received' ||
+        category == 'debt_paid') {
+      return Icons.account_balance_wallet_outlined;
+    }
+    return switch (category) {
+      'service' => Icons.handyman_outlined,
+      'sale' => Icons.storefront_outlined,
+      'supplies' => Icons.inventory_2_outlined,
+      'rent' => Icons.home_work_outlined,
+      'transport' => Icons.local_shipping_outlined,
+      'marketing' => Icons.campaign_outlined,
+      'salary' => Icons.badge_outlined,
+      'equipment' => Icons.precision_manufacturing_outlined,
+      _ => isIncome ? Icons.south_west_rounded : Icons.north_east_rounded,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -706,34 +1974,35 @@ class _ActivityTile extends StatelessWidget {
     final isIncome = tx.type == TransactionType.income;
     final tileColor = isIncome ? colors.income : colors.expense;
     final sign = isIncome ? '+' : '−';
+    final catName = _categoryLabel(tx.category, tx.linkedEntityType);
     final label =
-        tx.description?.isNotEmpty == true ? tx.description! : tx.category ?? 'Операция';
+        tx.description?.isNotEmpty == true ? tx.description! : catName;
+    final iconData = _categoryIcon(tx.category, tx.linkedEntityType, isIncome);
 
     return InkWell(
       onTap: () => context.go('/finance'),
-      borderRadius: BorderRadius.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+          horizontal: AppSpacing.md,
+          vertical: 12,
+        ),
         child: Row(
           children: [
-            // Dot indicator
+            // Category-aware icon badge
             Container(
-              width: 36,
-              height: 36,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: tileColor.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                isIncome
-                    ? Icons.arrow_downward_rounded
-                    : Icons.arrow_upward_rounded,
-                size: 16,
+                iconData,
+                size: 18,
                 color: tileColor,
               ),
             ),
-            const SizedBox(width: AppSpacing.md),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -742,29 +2011,54 @@ class _ActivityTile extends StatelessWidget {
                     label,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    DateHelper.relativeDate(tx.date),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colors.textMuted,
-                    ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceSecondary,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          catName,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        DateHelper.relativeDate(tx.date),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colors.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: AppSpacing.sm),
+            const SizedBox(width: 8),
             Text(
-              '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}',
+              hideBalances
+                  ? '•••• $currency'
+                  : '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}',
               style: TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 color: tileColor,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 
@@ -27,7 +28,7 @@ class SocialLogin extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: Text(
-                  'Или войдите через',
+                  context.tr('Или войдите через', 'Or continue with'),
                   style: TextStyle(
                     fontSize: 13,
                     color: colors.textMuted,

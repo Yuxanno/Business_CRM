@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_tr.dart';
 import '../theme/app_colors.dart';
 
 class AppSectionHeader extends StatelessWidget {
@@ -33,7 +34,7 @@ class AppSectionHeader extends StatelessWidget {
           GestureDetector(
             onTap: action,
             child: Text(
-              actionLabel ?? 'Все',
+              actionLabel ?? context.tr('Все', 'All'),
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,

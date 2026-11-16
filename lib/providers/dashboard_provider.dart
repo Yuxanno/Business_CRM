@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/transaction.dart';
 import '../services/api_client.dart';
+import '../services/local_cache.dart';
 
-/// Aggregates all data needed for the Home dashboard.
+/// Aggregates all data needed for the Home dashboard with instant local cache
+/// (Stale-While-Revalidate) so the UI renders immediately regardless of network.
 class DashboardProvider extends ChangeNotifier {
   final _api = ApiClient.instance;
 
@@ -14,9 +17,11 @@ class DashboardProvider extends ChangeNotifier {
   int _activeOrdersCount = 0;
   int _totalCustomersCount = 0;
   int _receivableCents = 0;
+  int _payableCents = 0;
   List<AppTransaction> _recentActivity = [];
   List<Map<String, dynamic>> _chartData = [];
   bool _isLoading = false;
+  bool _hasData = false;
   String? _error;
 
   int get year => _year;
@@ -27,35 +32,58 @@ class DashboardProvider extends ChangeNotifier {
   int get activeOrdersCount => _activeOrdersCount;
   int get totalCustomersCount => _totalCustomersCount;
   int get receivableCents => _receivableCents;
+  int get payableCents => _payableCents;
   List<AppTransaction> get recentActivity => _recentActivity;
   List<Map<String, dynamic>> get chartData => _chartData;
-  bool get isLoading => _isLoading;
+  bool get isLoading => _isLoading && !_hasData;
+  bool get isRefreshing => _isLoading;
   String? get error => _error;
+
+  void _applyPayload(Map<String, dynamic> json) {
+    _incomeCents = (json['incomeCents'] as num?)?.toInt() ?? 0;
+    _expenseCents = (json['expenseCents'] as num?)?.toInt() ?? 0;
+    _activeOrdersCount = (json['activeOrdersCount'] as num?)?.toInt() ?? 0;
+    _receivableCents = (json['receivableCents'] as num?)?.toInt() ?? 0;
+    _payableCents = (json['payableCents'] as num?)?.toInt() ?? 0;
+    _totalCustomersCount =
+        (json['totalCustomersCount'] as num?)?.toInt() ?? 0;
+    final chart = (json['chartData'] as List?) ?? const [];
+    _chartData =
+        chart.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final recent = (json['recent'] as List?) ?? const [];
+    _recentActivity = recent
+        .map((e) =>
+            AppTransaction.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    _hasData = true;
+  }
 
   Future<void> load({int? year, int? month}) async {
     if (year != null) _year = year;
     if (month != null) _month = month;
+
+    final cacheKey = 'dashboard_${_year}_$_month';
+
+    // 1. Instant local snapshot so Home renders in < 50ms
+    if (!_hasData) {
+      final cached = await LocalCache.readMap(cacheKey);
+      if (cached != null) {
+        _applyPayload(cached);
+        notifyListeners();
+      }
+    }
 
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final json = await _api.get('/api/dashboard?year=$_year&month=$_month');
-      _incomeCents = (json['incomeCents'] as num?)?.toInt() ?? 0;
-      _expenseCents = (json['expenseCents'] as num?)?.toInt() ?? 0;
-      _activeOrdersCount = (json['activeOrdersCount'] as num?)?.toInt() ?? 0;
-      _receivableCents = (json['receivableCents'] as num?)?.toInt() ?? 0;
-      _totalCustomersCount =
-          (json['totalCustomersCount'] as num?)?.toInt() ?? 0;
-      final chart = (json['chartData'] as List?) ?? const [];
-      _chartData =
-          chart.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      final recent = (json['recent'] as List?) ?? const [];
-      _recentActivity = recent
-          .map((e) =>
-              AppTransaction.fromMap(Map<String, dynamic>.from(e as Map)))
-          .toList();
+      final raw = await _api.get('/api/dashboard?year=$_year&month=$_month&tz=${DateTime.now().timeZoneOffset.inMinutes}');
+      if (raw is Map) {
+        final json = Map<String, dynamic>.from(raw);
+        _applyPayload(json);
+        unawaited(LocalCache.writeMap(cacheKey, json));
+      }
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -64,7 +92,28 @@ class DashboardProvider extends ChangeNotifier {
     }
   }
 
+  /// Lightweight summary fetch used by Profile/More screen (only counts & debt totals).
+  Future<void> loadSummaryOnly() async {
+    try {
+      final raw = await _api.get('/api/dashboard/summary');
+      if (raw is Map) {
+        _activeOrdersCount =
+            (raw['activeOrdersCount'] as num?)?.toInt() ?? _activeOrdersCount;
+        _totalCustomersCount = (raw['totalCustomersCount'] as num?)?.toInt() ??
+            _totalCustomersCount;
+        _receivableCents =
+            (raw['receivableCents'] as num?)?.toInt() ?? _receivableCents;
+        _payableCents =
+            (raw['payableCents'] as num?)?.toInt() ?? _payableCents;
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
   Future<void> reload() => load();
 
-  void setMonth(int year, int month) => load(year: year, month: month);
+  void setMonth(int year, int month) {
+    _hasData = false;
+    load(year: year, month: month);
+  }
 }

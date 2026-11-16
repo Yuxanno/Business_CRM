@@ -36,6 +36,8 @@ class AppSearchBar extends StatelessWidget {
             child: TextField(
               controller: controller,
               onChanged: onChanged,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
               style: TextStyle(fontSize: 14, color: colors.textPrimary),
               decoration: InputDecoration(
                 hintText: hint,

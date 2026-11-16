@@ -3,6 +3,8 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 
 /// Standard surface card with consistent border, radius, and padding.
+/// Uses a crisp 1px border instead of blurred shadows by default so long
+/// scrolling lists stay smooth on low-end GPUs.
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -12,6 +14,7 @@ class AppCard extends StatelessWidget {
     this.radius,
     this.margin,
     this.color,
+    this.elevated = false,
   });
 
   final Widget child;
@@ -20,45 +23,72 @@ class AppCard extends StatelessWidget {
   final double? radius;
   final EdgeInsetsGeometry? margin;
   final Color? color;
+  final bool elevated;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final r = radius ?? AppRadius.card;
+    final pad = padding ?? const EdgeInsets.all(AppSpacing.lg);
+    final bg = color ?? colors.surface;
 
-    return Container(
+    final card = Container(
       margin: margin,
       decoration: BoxDecoration(
-        color: color ?? colors.surface,
+        color: bg,
         borderRadius: BorderRadius.circular(r),
         border: Border.all(color: colors.border, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.ink.withValues(alpha: 0.03),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(r),
-        child: onTap != null
-            ? Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(r),
-                  child: Padding(
-                    padding: padding ??
-                        const EdgeInsets.all(AppSpacing.lg),
-                    child: child,
-                  ),
+        boxShadow: elevated
+            ? [
+                BoxShadow(
+                  color: AppColors.ink.withValues(alpha: 0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
-              )
-            : Padding(
-                padding: padding ?? const EdgeInsets.all(AppSpacing.lg),
-                child: child,
+              ]
+            : null,
+      ),
+      child: onTap != null
+          ? Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(r),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(r),
+                child: Padding(padding: pad, child: child),
               ),
+            )
+          : Padding(padding: pad, child: child),
+    );
+
+    if (onTap == null) return card;
+    return _TactileCardScale(child: card);
+  }
+}
+
+class _TactileCardScale extends StatefulWidget {
+  const _TactileCardScale({required this.child});
+  final Widget child;
+
+  @override
+  State<_TactileCardScale> createState() => _TactileCardScaleState();
+}
+
+class _TactileCardScaleState extends State<_TactileCardScale> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (_) => setState(() => _pressed = true),
+      onPointerUp: (_) => setState(() => _pressed = false),
+      onPointerCancel: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.985 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOutCubic,
+        child: widget.child,
       ),
     );
   }

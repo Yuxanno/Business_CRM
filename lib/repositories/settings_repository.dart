@@ -8,7 +8,7 @@ class SettingsRepository {
 
   Future<AppSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final settings = AppSettings(
+    return AppSettings(
       businessName: prefs.getString('${_prefix}businessName') ?? '',
       ownerName: prefs.getString('${_prefix}ownerName') ?? '',
       currency: prefs.getString('${_prefix}currency') ?? 'RUB',
@@ -19,34 +19,33 @@ class SettingsRepository {
       isOnboardingDone:
           prefs.getBool('${_prefix}isOnboardingDone') ?? false,
     );
-    
-    // Попытка синхронизации с сервером в фоне (не блокирует возврат)
-    _syncFromServer(prefs);
-    
-    return settings;
   }
-  
-  /// Синхронизирует настройки с сервера в фоновом режиме
-  Future<void> _syncFromServer(SharedPreferences prefs) async {
+
+  /// Fetches the user's saved profile settings (currency, locale, name, businessName) from the server.
+  Future<Map<String, String>?> fetchServerProfile() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken');
-      if (token == null || token.isEmpty) return;
-      
+      if (token == null || token.isEmpty) return null;
+
       final data = await ApiClient.instance.get('/api/auth/me');
       if (data is Map) {
-        final currency = data['currency']?.toString();
-        final locale = data['locale']?.toString();
-        
-        if (currency != null && currency.isNotEmpty) {
-          await prefs.setString('${_prefix}currency', currency);
-        }
-        if (locale != null && locale.isNotEmpty) {
-          await prefs.setString('${_prefix}locale', locale);
-        }
+        return {
+          if (data['currency'] != null &&
+              data['currency'].toString().isNotEmpty)
+            'currency': data['currency'].toString(),
+          if (data['locale'] != null && data['locale'].toString().isNotEmpty)
+            'locale': data['locale'].toString(),
+          if (data['businessName'] != null)
+            'businessName': data['businessName'].toString(),
+          if (data['name'] != null && data['name'].toString().isNotEmpty)
+            'ownerName': data['name'].toString(),
+        };
       }
-    } catch (e) {
-      // Тихо игнорируем ошибки синхронизации
+    } catch (_) {
+      // Ignore offline/network sync errors
     }
+    return null;
   }
 
   Future<void> save(AppSettings settings) async {
@@ -83,11 +82,12 @@ class SettingsRepository {
         return;
       }
 
-      final currentSettings = await load();
-      
+      final currentCurrency = prefs.getString('${_prefix}currency') ?? 'RUB';
+      final currentLocale = prefs.getString('${_prefix}locale') ?? 'ru';
+
       await ApiClient.instance.put('/api/auth/profile', {
-        'currency': currency ?? currentSettings.currency,
-        'locale': locale ?? currentSettings.locale,
+        'currency': currency ?? currentCurrency,
+        'locale': locale ?? currentLocale,
       });
     } catch (e) {
       // Rethrow so the caller can handle it

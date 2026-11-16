@@ -26,6 +26,8 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ userId: 1, createdAt: -1 });
+orderSchema.index({ userId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ userId: 1, customerId: 1, createdAt: -1 });
 
 const orderPaymentSchema = new mongoose.Schema(
   {
@@ -40,6 +42,8 @@ const orderPaymentSchema = new mongoose.Schema(
   },
   { _id: false, versionKey: false }
 );
+
+orderPaymentSchema.index({ userId: 1, orderId: 1, paidAt: -1 });
 
 module.exports = {
   Order: mongoose.model('Order', orderSchema),

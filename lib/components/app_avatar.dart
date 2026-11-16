@@ -22,16 +22,23 @@ class AppAvatar extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: color,
         shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.22),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       alignment: Alignment.center,
       child: Text(
         initials,
         style: TextStyle(
-          color: color,
+          color: Colors.white,
           fontSize: fontSize ?? size * 0.38,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           height: 1,
         ),
       ),

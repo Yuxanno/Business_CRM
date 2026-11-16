@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { logSuccess, logError, logWarning } = require('../utils/logger');
+const { invalidateUserAuthCache } = require('../utils/cache');
 
 const router = express.Router();
 
@@ -32,13 +33,20 @@ router.post(
       throw new Error('Пользователь с таким логином уже существует');
     }
 
-    // Create user with default settings
+    const rawLocale = req.body.locale != null ? String(req.body.locale).trim() : 'ru';
+    const initialLocale = rawLocale === 'en' ? 'en' : 'ru';
+    const businessName = req.body.businessName != null ? String(req.body.businessName).trim() : '';
+    const rawCurrency = req.body.currency != null ? String(req.body.currency).trim() : 'RUB';
+    const initialCurrency = rawCurrency || 'RUB';
+
+    // Create user with settings
     const user = await User.create({
       name,
       username: normalizedUsername,
       password,
-      currency: 'RUB',  // Default currency
-      locale: 'ru',     // Default locale
+      businessName,
+      currency: initialCurrency,
+      locale: initialLocale,
     });
 
     if (user) {
@@ -122,20 +130,16 @@ router.get(
   '/me',
   protect,
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (user) {
-      res.json({
-        _id: user._id,
-        name: user.name,
-        username: user.username,
-        businessName: user.businessName || '',
-        currency: user.currency || 'RUB',
-        locale: user.locale || 'ru',
-      });
-    } else {
-      res.status(404);
-      throw new Error('User not found');
-    }
+    // User is already fetched/cached by protect middleware
+    const user = req.user;
+    res.json({
+      _id: user._id,
+      name: user.name,
+      username: user.username,
+      businessName: user.businessName || '',
+      currency: user.currency || 'RUB',
+      locale: user.locale || 'ru',
+    });
   })
 );
 
@@ -167,10 +171,11 @@ router.put(
       req.body.currency != null
         ? String(req.body.currency).trim()
         : user.currency || 'RUB';
-    const locale =
+    const rawLocale =
       req.body.locale != null
         ? String(req.body.locale).trim()
         : user.locale || 'ru';
+    const locale = rawLocale === 'en' ? 'en' : 'ru';
 
     if (!name) {
       res.status(400);
@@ -201,6 +206,7 @@ router.put(
     if (password) user.password = password;
 
     await user.save();
+    invalidateUserAuthCache(user._id);
 
     logSuccess('PUT', '/api/auth/profile', `Профиль обновлён: ${user.username}`, {
       userId: user._id,
@@ -221,6 +227,61 @@ router.put(
       currency: user.currency || 'RUB',
       locale: user.locale || 'ru',
     });
+  })
+);
+
+// ─── @desc    Delete account and all its data ─────────────────────────────────
+// ─── @route   DELETE /api/auth/account ───────────────────────────────────────
+// ─── @access  Private ────────────────────────────────────────────────────────
+router.delete(
+  '/account',
+  protect,
+  asyncHandler(async (req, res) => {
+    const password =
+      req.body && req.body.password != null ? String(req.body.password) : '';
+    if (!password) {
+      res.status(400);
+      throw new Error('Введите пароль для подтверждения');
+    }
+
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) {
+      res.status(404);
+      throw new Error('Пользователь не найден');
+    }
+
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      res.status(401);
+      throw new Error('Неверный пароль');
+    }
+
+    const Customer = require('../models/Customer');
+    const Transaction = require('../models/Transaction');
+    const { Order, OrderPayment } = require('../models/Order');
+    const { Debt, DebtPayment } = require('../models/Debt');
+    const { invalidateUserDataCache } = require('../utils/cache');
+
+    const userId = String(req.user._id);
+
+    await Promise.all([
+      Customer.deleteMany({ userId }),
+      Transaction.deleteMany({ userId }),
+      Order.deleteMany({ userId }),
+      OrderPayment.deleteMany({ userId }),
+      Debt.deleteMany({ userId }),
+      DebtPayment.deleteMany({ userId }),
+    ]);
+    await User.deleteOne({ _id: req.user._id });
+
+    invalidateUserAuthCache(userId);
+    invalidateUserDataCache(userId);
+
+    logSuccess('DELETE', '/api/auth/account', `Аккаунт удалён: ${req.user.username}`, {
+      userId,
+    });
+
+    res.json({ success: true });
   })
 );
 

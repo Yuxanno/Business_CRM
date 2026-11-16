@@ -1,16 +1,41 @@
 import '../models/customer.dart';
 import '../services/api_client.dart';
 
+class CustomerPage {
+  const CustomerPage({required this.items, required this.hasMore});
+
+  final List<Customer> items;
+  final bool hasMore;
+}
+
 class CustomerRepository {
   final _api = ApiClient.instance;
 
-  Future<List<Customer>> getAll() async {
-    final json = await _api.get('/api/customers?limit=300');
+  List<Customer> _parse(dynamic json) {
     final items = (json['items'] as List?) ?? const [];
     return items
         .map((e) => Customer.fromMap(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
+
+  Future<CustomerPage> getPage({
+    int skip = 0,
+    int limit = 25,
+    String? query,
+  }) async {
+    final params = <String>['skip=$skip', 'limit=$limit'];
+    if (query != null && query.trim().isNotEmpty) {
+      params.add('q=${Uri.encodeQueryComponent(query.trim())}');
+    }
+    final json = await _api.get('/api/customers?${params.join('&')}');
+    return CustomerPage(
+      items: _parse(json),
+      hasMore: json['hasMore'] == true,
+    );
+  }
+
+  Future<List<Customer>> getAll() async =>
+      _parse(await _api.get('/api/customers?limit=300'));
 
   Future<Customer?> getById(String id) async {
     try {
@@ -34,13 +59,9 @@ class CustomerRepository {
     await _api.delete('/api/customers/$id');
   }
 
-  Future<List<Customer>> search(String query) async {
-    final json = await _api.get('/api/customers?q=${Uri.encodeQueryComponent(query)}');
-    final items = (json['items'] as List?) ?? const [];
-    return items
-        .map((e) => Customer.fromMap(Map<String, dynamic>.from(e as Map)))
-        .toList();
-  }
+  Future<List<Customer>> search(String query) async => _parse(
+        await _api.get('/api/customers?q=${Uri.encodeQueryComponent(query)}'),
+      );
 
   /// Aggregates are updated by the API when orders/payments change.
   Future<void> addPayment(String customerId, int amountCents) async {}
@@ -49,4 +70,8 @@ class CustomerRepository {
 
   Future<void> removeOrder(
       String customerId, int orderAmountCents, int receivedCents) async {}
+
+  /// Real totals from the server (not limited by pagination).
+  Future<Map<String, dynamic>> getCounts() async =>
+      Map<String, dynamic>.from(await _api.get('/api/customers/counts') as Map);
 }
