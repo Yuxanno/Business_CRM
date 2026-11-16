@@ -9,10 +9,10 @@ class AppLocalizationsRu extends AppLocalizations {
   AppLocalizationsRu([String locale = 'ru']) : super(locale);
 
   @override
-  String get appTitle => 'Бизнес Менеджер';
+  String get appTitle => 'Business CRM';
 
   @override
-  String get appName => 'Business Manager';
+  String get appName => 'Business CRM';
 
   @override
   String get nav_home => 'Главная';

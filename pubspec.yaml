@@ -1,5 +1,5 @@
 name: business_manager
-description: "Business Manager — personal business management application."
+description: "Business CRM — personal business management application."
 publish_to: 'none'
 
 version: 1.0.0+1

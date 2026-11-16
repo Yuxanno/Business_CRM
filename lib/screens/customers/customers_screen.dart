@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../models/customer.dart';
 import '../../providers/customer_provider.dart';
+import '../../providers/order_provider.dart';
 import '../../providers/debt_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/financial_calculator.dart';
@@ -37,6 +37,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CustomerProvider>().load();
+      final op = context.read<OrderProvider>();
+      if (op.allOrders.isEmpty && !op.isLoading) {
+        op.load(silent: true);
+      }
       final dp = context.read<DebtProvider>();
       if (dp.all.isEmpty && !dp.isLoading) {
         dp.load();
@@ -60,17 +64,24 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final provider = context.watch<CustomerProvider>();
+    final orderProvider = context.watch<OrderProvider>();
     final debtProvider = context.watch<DebtProvider>();
     final currency = context.watch<SettingsProvider>().currency;
 
+    int orderDebtFor(Customer c) =>
+        orderProvider.orderDebtForCustomer(c.id) ??
+        (c.outstandingBalanceCents > 0 ? c.outstandingBalanceCents : 0);
+
     int totalDebtFor(Customer c) =>
-        c.outstandingBalanceCents +
+        orderDebtFor(c) +
         debtProvider.remainingDebtForCustomer(c.id, c.name);
 
     final baseList = provider.customers;
     final allCount = provider.totalCount;
-    final withDebtCount = provider.withDebtCountFromServer ??
-        baseList.where((c) => totalDebtFor(c) > 0).length;
+    final withDebtCount = !provider.hasMore
+        ? baseList.where((c) => totalDebtFor(c) > 0).length
+        : (provider.withDebtCountFromServer ??
+            baseList.where((c) => totalDebtFor(c) > 0).length);
     final withOrdersCount = provider.withOrdersCount;
 
     final filtered = switch (_selectedFilter) {
@@ -209,6 +220,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                           onRefresh: () async {
                             await Future.wait([
                               context.read<CustomerProvider>().load(),
+                              context.read<OrderProvider>().load(silent: true),
                               context.read<DebtProvider>().load(),
                             ]);
                           },
@@ -264,6 +276,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                   child: RepaintBoundary(
                                     child: _ModernCustomerCard(
                                       customer: c,
+                                      orderDebtCents: orderDebtFor(c),
                                       extraDebtCents: extraDebt,
                                       debtsCount: debtsCount,
                                       currency: currency,
@@ -644,6 +657,7 @@ class _CustomerFilterStrip extends StatelessWidget {
 class _ModernCustomerCard extends StatelessWidget {
   const _ModernCustomerCard({
     required this.customer,
+    required this.orderDebtCents,
     required this.extraDebtCents,
     required this.debtsCount,
     required this.currency,
@@ -653,6 +667,7 @@ class _ModernCustomerCard extends StatelessWidget {
   });
 
   final Customer customer;
+  final int orderDebtCents;
   final int extraDebtCents;
   final int debtsCount;
   final String currency;
@@ -663,7 +678,7 @@ class _ModernCustomerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final totalDebtCents = customer.outstandingBalanceCents + extraDebtCents;
+    final totalDebtCents = orderDebtCents + extraDebtCents;
     final hasDebt = totalDebtCents > 0;
     final hasActivity = customer.totalOrdersCount > 0 || debtsCount > 0;
     final hasPhone =
@@ -688,239 +703,210 @@ class _ModernCustomerCard extends StatelessWidget {
       subtitleIcon = Icons.person_outline_rounded;
     }
 
-    return Slidable(
-      key: ValueKey('customer_${customer.id}'),
-      endActionPane: ActionPane(
-        motion: const DrawerMotion(),
-        extentRatio: 0.42,
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SlidableAction(
-            onPressed: (_) => onEdit(),
-            backgroundColor: colors.primary,
-            foregroundColor: Colors.white,
-            icon: Icons.edit_rounded,
-            label: context.tr('Изменить', 'Edit'),
-            borderRadius: const BorderRadius.horizontal(
-              left: Radius.circular(14),
-            ),
-          ),
-          SlidableAction(
-            onPressed: (_) => onDelete(),
-            backgroundColor: colors.expense,
-            foregroundColor: Colors.white,
-            icon: Icons.delete_outline_rounded,
-            label: context.tr('Удалить', 'Delete'),
-            borderRadius: const BorderRadius.horizontal(
-              right: Radius.circular(14),
-            ),
-          ),
-        ],
-      ),
-      child: AppCard(
-        padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Row 1: Avatar + Name/Phone (Left) | Status/Debt Badge (Right)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: avatarColor,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    initials,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
+          // ── Row 1: Avatar + Name/Phone (Left) | Status/Debt Badge (Right)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: avatarColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  initials,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        customer.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(
-                            subtitleIcon,
-                            size: 12,
-                            color: colors.textMuted,
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              subtitleText,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: colors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                if (hasDebt)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        FinancialCalculator.formatCents(
-                          totalDebtCents,
-                          currency: currency,
-                        ),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFFD97706),
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFD97706),
-                          borderRadius: BorderRadius.circular(7),
-                        ),
-                        child: Text(
-                          extraDebtCents > 0 && customer.outstandingBalanceCents == 0
-                              ? context.tr('Долг клиента', 'Customer debt')
-                              : context.tr('Есть долг', 'Has debt'),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: hasActivity
-                          ? colors.income
-                          : colors.surfaceSecondary,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      hasActivity
-                          ? context.tr('Без долгов', 'No debt')
-                          : context.tr('Новый', 'New'),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: hasActivity
-                            ? Colors.white
-                            : colors.textSecondary,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-            Divider(height: 1, color: colors.divider),
-            const SizedBox(height: 9),
-
-            // ── Row 2: Orders & Paid Stats (Left) | Quick Action Icons (Right)
-            Row(
-              children: [
-                Icon(
-                  Icons.receipt_long_outlined,
-                  size: 13,
-                  color: colors.textMuted,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  context.tr('Заказов: ${customer.totalOrdersCount}',
-                      'Orders: ${customer.totalOrdersCount}'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textSecondary,
-                  ),
-                ),
-                if (customer.totalReceivedCents > 0) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    '•',
-                    style: TextStyle(fontSize: 12, color: colors.textMuted),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      context.tr(
-                          'Оплачено: ${FinancialCalculator.formatCentsCompact(customer.totalReceivedCents, currency: currency)}',
-                          'Paid: ${FinancialCalculator.formatCentsCompact(customer.totalReceivedCents, currency: currency)}'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customer.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: colors.income,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                        color: colors.textPrimary,
                       ),
                     ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Icon(
+                          subtitleIcon,
+                          size: 12,
+                          color: colors.textMuted,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            subtitleText,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              if (hasDebt)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      FinancialCalculator.formatCents(
+                        totalDebtCents,
+                        currency: currency,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFD97706),
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD97706),
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: Text(
+                        extraDebtCents > 0 && orderDebtCents == 0
+                            ? context.tr('Долг клиента', 'Customer debt')
+                            : context.tr('Есть долг', 'Has debt'),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
                   ),
-                ] else
-                  const Spacer(),
-                const SizedBox(width: 6),
-                // Edit quick button
-                _CardIconAction(
-                  icon: Icons.edit_outlined,
+                  decoration: BoxDecoration(
+                    color: hasActivity
+                        ? colors.income
+                        : colors.surfaceSecondary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    hasActivity
+                        ? context.tr('Без долгов', 'No debt')
+                        : context.tr('Новый', 'New'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: hasActivity
+                          ? Colors.white
+                          : colors.textSecondary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+          Divider(height: 1, color: colors.divider),
+          const SizedBox(height: 9),
+
+          // ── Row 2: Orders & Paid Stats (Left) | Quick Action Icons (Right)
+          Row(
+            children: [
+              Icon(
+                Icons.receipt_long_outlined,
+                size: 13,
+                color: colors.textMuted,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                context.tr('Заказов: ${customer.totalOrdersCount}',
+                    'Orders: ${customer.totalOrdersCount}'),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                   color: colors.textSecondary,
-                  bgColor: colors.background,
-                  borderColor: colors.border,
-                  onTap: onEdit,
                 ),
-                const SizedBox(width: 6),
-                // Delete quick button
-                _CardIconAction(
-                  icon: Icons.delete_outline_rounded,
-                  color: colors.expense,
-                  bgColor: colors.background,
-                  borderColor: colors.border,
-                  onTap: onDelete,
+              ),
+              if (customer.totalReceivedCents > 0) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '•',
+                  style: TextStyle(fontSize: 12, color: colors.textMuted),
                 ),
-              ],
-            ),
-          ],
-        ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    context.tr(
+                        'Оплачено: ${FinancialCalculator.formatCentsCompact(customer.totalReceivedCents, currency: currency)}',
+                        'Paid: ${FinancialCalculator.formatCentsCompact(customer.totalReceivedCents, currency: currency)}'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.income,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ] else
+                const Spacer(),
+              const SizedBox(width: 6),
+              // Edit quick button
+              _CardIconAction(
+                icon: Icons.edit_outlined,
+                color: colors.textSecondary,
+                bgColor: colors.background,
+                borderColor: colors.border,
+                onTap: onEdit,
+              ),
+              const SizedBox(width: 6),
+              // Delete quick button
+              _CardIconAction(
+                icon: Icons.delete_outline_rounded,
+                color: colors.expense,
+                bgColor: colors.background,
+                borderColor: colors.border,
+                onTap: onDelete,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

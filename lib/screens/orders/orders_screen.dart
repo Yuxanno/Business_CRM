@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../models/order.dart';
 import '../../providers/order_provider.dart';
+import '../../providers/customer_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/financial_calculator.dart';
@@ -50,6 +50,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     HapticFeedback.mediumImpact();
     await context.read<OrderProvider>().load();
     if (mounted) {
+      context.read<CustomerProvider>().load(silent: true);
       context.read<DashboardProvider>().reload();
     }
   }
@@ -59,7 +60,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
     await context.push(route);
     if (mounted) {
       await context.read<OrderProvider>().load();
-      if (mounted) context.read<DashboardProvider>().reload();
+      if (mounted) {
+        context.read<CustomerProvider>().load(silent: true);
+        context.read<DashboardProvider>().reload();
+      }
     }
   }
 
@@ -75,6 +79,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (confirm == true && context.mounted) {
       await context.read<OrderProvider>().delete(order.id);
       if (context.mounted) {
+        context.read<CustomerProvider>().load(silent: true);
         context.read<DashboardProvider>().reload();
       }
     }
@@ -251,6 +256,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 await context.push('/orders/${order.id}');
                                 if (mounted) {
                                   context.read<OrderProvider>().load();
+                                  context.read<CustomerProvider>().load(silent: true);
                                   context.read<DashboardProvider>().reload();
                                 }
                               },
@@ -627,209 +633,251 @@ class _ModernOrderCard extends StatelessWidget {
         ? colors.textMuted
         : (order.isFullyPaid ? colors.income : colors.primary);
 
-    return Slidable(
-      key: ValueKey(order.id),
-      endActionPane: ActionPane(
-        motion: const DrawerMotion(),
-        extentRatio: 0.42,
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      radius: AppRadius.cardLarge,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SlidableAction(
-            onPressed: (_) => onEdit(),
-            backgroundColor: colors.primary,
-            foregroundColor: Colors.white,
-            icon: Icons.edit_rounded,
-            label: context.tr('Изменить', 'Edit'),
-          ),
-          SlidableAction(
-            onPressed: (_) => onDelete(),
-            backgroundColor: colors.expense,
-            foregroundColor: Colors.white,
-            icon: Icons.delete_outline_rounded,
-            label: context.tr('Удалить', 'Delete'),
-          ),
-        ],
-      ),
-      child: AppCard(
-        padding: const EdgeInsets.all(16),
-        radius: AppRadius.cardLarge,
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Row: Customer Avatar + Title + Status Badge
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                AppAvatar(
-                  name: order.customerName.isNotEmpty
-                      ? order.customerName
-                      : order.title,
-                  size: 40,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
-                          color: colors.textPrimary,
-                        ),
+          // Top Row: Customer Avatar + Title + Status Badge
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              AppAvatar(
+                name: order.customerName.isNotEmpty
+                    ? order.customerName
+                    : order.title,
+                size: 40,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      order.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                        color: colors.textPrimary,
                       ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.person_outline_rounded,
-                            size: 13,
-                            color: colors.textMuted,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.person_outline_rounded,
+                          size: 13,
+                          color: colors.textMuted,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            order.customerName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: colors.textSecondary,
+                            ),
                           ),
-                          const SizedBox(width: 4),
-                          Expanded(
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              AppStatusBadge.order(order.status, context),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // Financial & Deadline Box
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colors.background,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            context.tr('Стоимость заказа', 'Order total'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
                             child: Text(
-                              order.customerName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              FinancialCalculator.formatCents(
+                                order.totalPriceCents,
+                                currency: currency,
+                              ),
                               style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: colors.textSecondary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: colors.textPrimary,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
                               ),
                             ),
                           ),
                         ],
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 8),
+                    if (order.dueDate != null)
+                      _DeadlineBadge(
+                        dueDate: order.dueDate!,
+                        isDone: order.status == OrderStatus.completed ||
+                            order.status == OrderStatus.cancelled,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 5,
+                    backgroundColor: colors.border.withValues(alpha: 0.6),
+                    valueColor: AlwaysStoppedAnimation(paidColor),
                   ),
                 ),
-                const SizedBox(width: 8),
-                AppStatusBadge.order(order.status, context),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            // Financial & Deadline Box
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colors.background,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      order.isFullyPaid
+                          ? Icons.verified_rounded
+                          : Icons.payments_outlined,
+                      size: 13,
+                      color: order.isFullyPaid
+                          ? colors.income
+                          : colors.textSecondary,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
                           children: [
-                            Text(
-                              context.tr('Стоимость заказа', 'Order total'),
+                            TextSpan(
+                              text: order.isFullyPaid
+                                  ? context.tr(
+                                      'Оплачено полностью', 'Fully paid')
+                                  : context.tr(
+                                      'Получено: ${FinancialCalculator.formatCents(order.receivedCents, currency: currency)}',
+                                      'Paid: ${FinancialCalculator.formatCents(order.receivedCents, currency: currency)}',
+                                    ),
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
-                                color: colors.textMuted,
+                                color: order.isFullyPaid
+                                    ? colors.income
+                                    : colors.textSecondary,
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                FinancialCalculator.formatCents(
-                                  order.totalPriceCents,
-                                  currency: currency,
+                            if (!order.isFullyPaid && !isCancelled) ...[
+                              TextSpan(
+                                text: '  •  ',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colors.textMuted,
+                                ),
+                              ),
+                              TextSpan(
+                                text: context.tr(
+                                  'Остаток: ${FinancialCalculator.formatCentsCompact(order.remainingCents, currency: currency)}',
+                                  'Due: ${FinancialCalculator.formatCentsCompact(order.remainingCents, currency: currency)}',
                                 ),
                                 style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: colors.textPrimary,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures()
-                                  ],
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.warning,
                                 ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 8),
-                      if (order.dueDate != null)
-                        _DeadlineBadge(
-                          dueDate: order.dueDate!,
-                          isDone: order.status == OrderStatus.completed ||
-                              order.status == OrderStatus.cancelled,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 5,
-                      backgroundColor: colors.border.withValues(alpha: 0.6),
-                      valueColor: AlwaysStoppedAnimation(paidColor),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Icon(
-                        order.isFullyPaid
-                            ? Icons.verified_rounded
-                            : Icons.payments_outlined,
-                        size: 13,
-                        color: order.isFullyPaid
-                            ? colors.income
-                            : colors.textSecondary,
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          order.isFullyPaid
-                              ? context.tr('Оплачено полностью', 'Fully paid')
-                              : context.tr(
-                                  'Получено: ${FinancialCalculator.formatCents(order.receivedCents, currency: currency)}',
-                                  'Paid: ${FinancialCalculator.formatCents(order.receivedCents, currency: currency)}',
-                                ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: order.isFullyPaid
-                                ? colors.income
-                                : colors.textSecondary,
-                          ),
-                        ),
-                      ),
-                      if (!order.isFullyPaid && !isCancelled)
-                        Text(
-                          context.tr(
-                            'Остаток: ${FinancialCalculator.formatCentsCompact(order.remainingCents, currency: currency)}',
-                            'Due: ${FinancialCalculator.formatCentsCompact(order.remainingCents, currency: currency)}',
-                          ),
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: colors.warning,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 8),
+                    _OrderCardIconAction(
+                      icon: Icons.edit_outlined,
+                      color: colors.textSecondary,
+                      bgColor: colors.surface,
+                      borderColor: colors.border,
+                      onTap: onEdit,
+                    ),
+                    const SizedBox(width: 6),
+                    _OrderCardIconAction(
+                      icon: Icons.delete_outline_rounded,
+                      color: colors.expense,
+                      bgColor: colors.surface,
+                      borderColor: colors.border,
+                      onTap: onDelete,
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrderCardIconAction extends StatelessWidget {
+  const _OrderCardIconAction({
+    required this.icon,
+    required this.color,
+    required this.bgColor,
+    required this.borderColor,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color bgColor;
+  final Color borderColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: borderColor),
         ),
+        child: Icon(icon, size: 15, color: color),
       ),
     );
   }

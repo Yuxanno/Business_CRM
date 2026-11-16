@@ -101,13 +101,13 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In ru, this message translates to:
-  /// **'Бизнес Менеджер'**
+  /// **'Business CRM'**
   String get appTitle;
 
   /// No description provided for @appName.
   ///
   /// In ru, this message translates to:
-  /// **'Business Manager'**
+  /// **'Business CRM'**
   String get appName;
 
   /// No description provided for @nav_home.

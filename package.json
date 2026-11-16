@@ -1,7 +1,7 @@
 {
   "name": "biznes-crm",
   "version": "1.0.0",
-  "description": "Business Manager — mobile CRM app with Flutter frontend and Node.js backend",
+  "description": "Business CRM — mobile CRM app with Flutter frontend and Node.js backend",
   "private": true,
   "scripts": {
     "// ─── INSTALL ───────────────────────────────────────────────────────": "",
@@ -23,6 +23,7 @@
     "// ─── BUILD ──────────────────────────────────────────────────────────": "",
     "build:apk": "flutter build apk --release",
     "build:apk:debug": "flutter build apk --debug",
+    "studio": "start \"\" \"C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe\" android",
     "build:aab": "flutter build appbundle --release",
     "build:web": "flutter build web --release",
     "build:ios": "flutter build ios --release",

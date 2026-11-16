@@ -1,5 +1,6 @@
 const express = require('express');
 const Customer = require('../models/Customer');
+const { Order } = require('../models/Order');
 const { protect, asyncHandler } = require('../middleware/auth');
 const { serialize, serializeMany } = require('../utils/serialize');
 const { dataCache, invalidateUserDataCache } = require('../utils/cache');
@@ -24,6 +25,45 @@ function pick(body) {
     if (body[f] !== undefined) out[f] = body[f];
   }
   return out;
+}
+
+/**
+ * Aggregates live order stats per customerId.
+ * Cancelled orders do not create unpaid debt (their amount is capped at receivedCents).
+ */
+async function getLiveOrderStatsMap(userId, customerIds = null) {
+  const match = { userId };
+  if (Array.isArray(customerIds) && customerIds.length > 0) {
+    match.customerId = { $in: customerIds };
+  }
+  const rows = await Order.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: '$customerId',
+        totalOrdersCount: { $sum: 1 },
+        totalReceivedCents: { $sum: { $ifNull: ['$receivedCents', 0] } },
+        totalOrdersAmountCents: {
+          $sum: {
+            $cond: [
+              { $eq: ['$status', 'cancelled'] },
+              { $ifNull: ['$receivedCents', 0] },
+              { $ifNull: ['$totalPriceCents', 0] },
+            ],
+          },
+        },
+      },
+    },
+  ]);
+  const map = new Map();
+  for (const r of rows) {
+    map.set(String(r._id), {
+      totalOrdersCount: r.totalOrdersCount || 0,
+      totalReceivedCents: r.totalReceivedCents || 0,
+      totalOrdersAmountCents: r.totalOrdersAmountCents || 0,
+    });
+  }
+  return map;
 }
 
 router.get(
@@ -60,6 +100,17 @@ router.get(
     const hasMore = rawItems.length > limit;
     const pageItems = hasMore ? rawItems.slice(0, limit) : rawItems;
 
+    if (pageItems.length > 0) {
+      const ids = pageItems.map((c) => String(c._id));
+      const statsMap = await getLiveOrderStatsMap(userId, ids);
+      for (const c of pageItems) {
+        const s = statsMap.get(String(c._id));
+        c.totalOrdersCount = s ? s.totalOrdersCount : 0;
+        c.totalReceivedCents = s ? s.totalReceivedCents : 0;
+        c.totalOrdersAmountCents = s ? s.totalOrdersAmountCents : 0;
+      }
+    }
+
     const payload = {
       items: serializeMany(pageItems),
       hasMore,
@@ -80,13 +131,12 @@ router.get(
     if (cached) return res.json(cached);
 
     const { Debt } = require('../models/Debt');
-    const [customers, debts] = await Promise.all([
-      Customer.find({ userId })
-        .select('name totalOrdersAmountCents totalReceivedCents totalOrdersCount')
-        .lean(),
+    const [customers, debts, statsMap] = await Promise.all([
+      Customer.find({ userId }).select('name').lean(),
       Debt.find({ userId, direction: 'receivable' })
         .select('customerId personName originalAmountCents paidAmountCents')
         .lean(),
+      getLiveOrderStatsMap(userId),
     ]);
     const debtIds = new Set();
     const debtNames = new Set();
@@ -98,9 +148,14 @@ router.get(
     let withOrders = 0;
     let withDebt = 0;
     for (const c of customers) {
-      if ((c.totalOrdersCount || 0) > 0) withOrders++;
+      const s = statsMap.get(String(c._id));
+      const ordersCount = s ? s.totalOrdersCount : 0;
+      const ordersAmount = s ? s.totalOrdersAmountCents : 0;
+      const receivedAmount = s ? s.totalReceivedCents : 0;
+
+      if (ordersCount > 0) withOrders++;
       const owes =
-        (c.totalOrdersAmountCents || 0) - (c.totalReceivedCents || 0) > 0 ||
+        ordersAmount - receivedAmount > 0 ||
         debtIds.has(c._id) ||
         debtNames.has(String(c.name || '').trim().toLowerCase());
       if (owes) withDebt++;
@@ -114,14 +169,20 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
+    const userId = String(req.user._id);
     const doc = await Customer.findOne({
       _id: req.params.id,
-      userId: String(req.user._id),
+      userId,
     }).lean();
     if (!doc) {
       res.status(404);
       throw new Error('Клиент не найден');
     }
+    const statsMap = await getLiveOrderStatsMap(userId, [String(doc._id)]);
+    const s = statsMap.get(String(doc._id));
+    doc.totalOrdersCount = s ? s.totalOrdersCount : 0;
+    doc.totalReceivedCents = s ? s.totalReceivedCents : 0;
+    doc.totalOrdersAmountCents = s ? s.totalOrdersAmountCents : 0;
     res.json(serialize(doc));
   })
 );

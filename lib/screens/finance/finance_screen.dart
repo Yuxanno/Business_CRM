@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -1287,150 +1286,160 @@ class _TransactionRowTile extends StatelessWidget {
     final iconData =
         _CategoryMeta.icon(tx.category, tx.linkedEntityType, isIncome);
 
-    return Slidable(
-      key: ValueKey(tx.id),
-      endActionPane: isLinked
-          ? null
-          : ActionPane(
-              motion: const DrawerMotion(),
-              extentRatio: 0.42,
-              children: [
-                SlidableAction(
-                  onPressed: (_) => onEdit(),
-                  backgroundColor: colors.primary,
-                  foregroundColor: Colors.white,
-                  icon: Icons.edit_rounded,
-                  label: context.tr('Изменить', 'Edit'),
-                ),
-                SlidableAction(
-                  onPressed: (_) => onDelete(),
-                  backgroundColor: colors.expense,
-                  foregroundColor: Colors.white,
-                  icon: Icons.delete_outline_rounded,
-                  label: context.tr('Удалить', 'Delete'),
-                ),
-              ],
-            ),
-      child: InkWell(
-        onTap: isLinked ? null : onEdit,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: 12,
-          ),
-          child: Row(
-            children: [
-              // Category Icon
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: tileColor.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(
-                  iconData,
-                  size: 19,
-                  color: tileColor,
-                ),
+    return InkWell(
+      onTap: isLinked ? null : onEdit,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: 12,
+        ),
+        child: Row(
+          children: [
+            // Category Icon
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: tileColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(13),
               ),
-              const SizedBox(width: 12),
+              child: Icon(
+                iconData,
+                size: 19,
+                color: tileColor,
+              ),
+            ),
+            const SizedBox(width: 12),
 
-              // Title + Category Badge + Notes
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: colors.textPrimary,
-                      ),
+            // Title + Category Badge + Notes
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
                     ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 1,
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceSecondary,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          catLabel,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textSecondary,
                           ),
-                          decoration: BoxDecoration(
-                            color: colors.surfaceSecondary,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
+                        ),
+                      ),
+                      if (isLinked) ...[
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.link_rounded,
+                          size: 12,
+                          color: colors.textMuted,
+                        ),
+                        const SizedBox(width: 2),
+                        Flexible(
                           child: Text(
-                            catLabel,
+                            tx.linkedEntityType == 'order_payment'
+                                ? context.tr('По заказу', 'For order')
+                                : context.tr('По долгу', 'For debt'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: colors.textSecondary,
+                              fontSize: 11,
+                              color: colors.textMuted,
                             ),
                           ),
                         ),
-                        if (isLinked) ...[
-                          const SizedBox(width: 6),
-                          Icon(
-                            Icons.link_rounded,
-                            size: 12,
-                            color: colors.textMuted,
-                          ),
-                          const SizedBox(width: 2),
-                          Flexible(
-                            child: Text(
-                              tx.linkedEntityType == 'order_payment'
-                                  ? context.tr('По заказу', 'For order')
-                                  : context.tr('По долгу', 'For debt'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colors.textMuted,
-                              ),
+                      ] else if (tx.notes?.isNotEmpty == true) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            tx.notes!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colors.textMuted,
                             ),
                           ),
-                        ] else if (tx.notes?.isNotEmpty == true) ...[
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              tx.notes!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colors.textMuted,
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // Amount
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: tileColor,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+                    ],
                   ),
                 ],
               ),
+            ),
+            const SizedBox(width: 8),
+
+            // Amount + Actions
+            Text(
+              '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: tileColor,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            if (!isLinked) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: onEdit,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: colors.background,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: Icon(
+                    Icons.edit_outlined,
+                    size: 14,
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+              GestureDetector(
+                onTap: onDelete,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: colors.background,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 14,
+                    color: colors.expense,
+                  ),
+                ),
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );

@@ -14,7 +14,7 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// HTTP client for the Biznes CRM API.
+/// HTTP client for the Business CRM API.
 /// Uses a persistent keep-alive [http.Client], caches the JWT in memory,
 /// and applies strict request timeouts so UI never stalls on slow networks.
 class ApiClient {
@@ -31,7 +31,10 @@ class ApiClient {
   final Map<String, String> _etags = {};
   final Map<String, dynamic> _etagPayloads = {};
 
+  static const String _envApiUrl = String.fromEnvironment('API_URL');
+
   static String get baseUrl {
+    if (_envApiUrl.isNotEmpty) return _envApiUrl;
     if (kIsWeb) return 'http://localhost:3001';
     return 'http://localhost:3001';
   }

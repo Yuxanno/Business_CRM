@@ -95,7 +95,7 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
         : const Locale('ru');
 
     return MaterialApp.router(
-      title: 'Business Manager',
+      title: 'Business CRM',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       themeMode: ThemeMode.light,

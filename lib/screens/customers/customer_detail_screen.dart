@@ -146,7 +146,26 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       );
     }
 
-    final customer = _customer!;
+    final rawCustomer = _customer!;
+    // Recompute live order obligations from loaded orders so cancelled orders
+    // never produce unpaid debt.
+    final liveOrdersAmountCents = _orders.fold<int>(
+      0,
+      (sum, o) =>
+          sum +
+          (o.status == OrderStatus.cancelled
+              ? o.receivedCents
+              : o.totalPriceCents),
+    );
+    final liveReceivedCents = _orders.fold<int>(
+      0,
+      (sum, o) => sum + o.receivedCents,
+    );
+    final customer = rawCustomer.copyWith(
+      totalOrdersCount: _orders.length,
+      totalOrdersAmountCents: liveOrdersAmountCents,
+      totalReceivedCents: liveReceivedCents,
+    );
     final customerDebts =
         debtProvider.debtsForCustomer(customer.id, customer.name);
     final extraDebtCents =
@@ -1065,6 +1084,7 @@ class _CustomerOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final isPaid = order.isFullyPaid;
+    final isCancelled = order.status == OrderStatus.cancelled;
     final progress = order.paymentProgress.clamp(0.0, 1.0);
 
     return AppCard(
@@ -1133,7 +1153,9 @@ class _CustomerOrderCard extends StatelessWidget {
               minHeight: 5,
               backgroundColor: colors.surfaceSecondary,
               valueColor: AlwaysStoppedAnimation(
-                isPaid ? colors.income : colors.primary,
+                isCancelled
+                    ? colors.textMuted
+                    : (isPaid ? colors.income : colors.primary),
               ),
             ),
           ),

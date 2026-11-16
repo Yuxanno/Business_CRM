@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:uuid/uuid.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -1069,34 +1068,12 @@ class _ModernDebtCard extends StatelessWidget {
             'due ${DateHelper.formatShortDate(debt.dueDate!)}'),
     ];
 
-    return Slidable(
-      key: ValueKey(debt.id),
-      endActionPane: ActionPane(
-        motion: const DrawerMotion(),
-        extentRatio: 0.42,
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SlidableAction(
-            onPressed: (_) => onEdit(),
-            backgroundColor: colors.primary,
-            foregroundColor: Colors.white,
-            icon: Icons.edit_rounded,
-            label: context.tr('Изменить', 'Edit'),
-          ),
-          SlidableAction(
-            onPressed: (_) => onDelete(),
-            backgroundColor: colors.expense,
-            foregroundColor: Colors.white,
-            icon: Icons.delete_outline_rounded,
-            label: context.tr('Удалить', 'Delete'),
-          ),
-        ],
-      ),
-      child: AppCard(
-        padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
             // ── Row 1: Avatar + Name/Subtitle + Amount & Status Badge ──────
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -1268,8 +1245,7 @@ class _ModernDebtCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 

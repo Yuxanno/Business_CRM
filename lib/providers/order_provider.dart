@@ -56,6 +56,21 @@ class OrderProvider extends ChangeNotifier {
   }
   OrderStatus? get statusFilter => _statusFilter;
 
+  /// Computes unpaid balance for a customer across active (non-cancelled) orders
+  /// when orders are loaded in memory. Returns null if orders aren't loaded yet.
+  int? orderDebtForCustomer(String customerId) {
+    if (!_hasLoadedOnce && _orders.isEmpty) return null;
+    final customerOrders = _orders.where((o) => o.customerId == customerId);
+    if (customerOrders.isEmpty && _hasMore) return null;
+    var debt = 0;
+    for (final o in customerOrders) {
+      if (o.status != OrderStatus.cancelled && o.remainingCents > 0) {
+        debt += o.remainingCents;
+      }
+    }
+    return debt;
+  }
+
   Future<void> load({bool silent = false}) async {
     if (_orders.isEmpty) {
       _counts ??= await LocalCache.readMap('${_cacheKey}_counts');

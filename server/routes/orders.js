@@ -32,6 +32,51 @@ function pick(body) {
   return out;
 }
 
+/**
+ * Recalculates and persists a customer's order totals from live orders.
+ * Cancelled orders do not create unpaid debt: their obligation is capped at
+ * whatever was actually received (0 when unpaid).
+ */
+async function syncCustomerOrderStats(userId, customerId) {
+  if (!customerId) return;
+  const rows = await Order.aggregate([
+    { $match: { userId, customerId } },
+    {
+      $group: {
+        _id: '$customerId',
+        totalOrdersCount: { $sum: 1 },
+        totalReceivedCents: { $sum: { $ifNull: ['$receivedCents', 0] } },
+        totalOrdersAmountCents: {
+          $sum: {
+            $cond: [
+              { $eq: ['$status', 'cancelled'] },
+              { $ifNull: ['$receivedCents', 0] },
+              { $ifNull: ['$totalPriceCents', 0] },
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  const stat = rows[0] || {
+    totalOrdersCount: 0,
+    totalReceivedCents: 0,
+    totalOrdersAmountCents: 0,
+  };
+
+  await Customer.updateOne(
+    { _id: customerId, userId },
+    {
+      $set: {
+        totalOrdersCount: stat.totalOrdersCount,
+        totalReceivedCents: stat.totalReceivedCents,
+        totalOrdersAmountCents: stat.totalOrdersAmountCents,
+      },
+    }
+  );
+}
+
 router.get(
   '/',
   asyncHandler(async (req, res) => {
@@ -145,15 +190,7 @@ router.post(
       userId,
       receivedCents: req.body.receivedCents || 0,
     });
-    await Customer.updateOne(
-      { _id: doc.customerId, userId },
-      {
-        $inc: {
-          totalOrdersAmountCents: doc.totalPriceCents,
-          totalOrdersCount: 1,
-        },
-      }
-    );
+    await syncCustomerOrderStats(userId, doc.customerId);
     invalidateUserDataCache(userId);
     res.status(201).json(serialize(doc));
   })
@@ -163,14 +200,19 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const userId = String(req.user._id);
+    const existing = await Order.findOne({ _id: req.params.id, userId }).lean();
+    if (!existing) {
+      res.status(404);
+      throw new Error('Заказ не найден');
+    }
     const doc = await Order.findOneAndUpdate(
       { _id: req.params.id, userId },
       { ...pick(req.body), updatedAt: new Date() },
       { new: true }
     ).lean();
-    if (!doc) {
-      res.status(404);
-      throw new Error('Заказ не найден');
+    await syncCustomerOrderStats(userId, doc.customerId);
+    if (existing.customerId && existing.customerId !== doc.customerId) {
+      await syncCustomerOrderStats(userId, existing.customerId);
     }
     invalidateUserDataCache(userId);
     res.json(serialize(doc));
@@ -190,16 +232,7 @@ router.delete(
       throw new Error('Заказ не найден');
     }
     await Promise.all([
-      Customer.updateOne(
-        { _id: doc.customerId, userId },
-        {
-          $inc: {
-            totalOrdersAmountCents: -doc.totalPriceCents,
-            totalReceivedCents: -doc.receivedCents,
-            totalOrdersCount: -1,
-          },
-        }
-      ),
+      syncCustomerOrderStats(userId, doc.customerId),
       OrderPayment.deleteMany({ orderId: doc._id, userId }),
     ]);
     invalidateUserDataCache(userId);
@@ -255,12 +288,9 @@ router.post(
         linkedEntityType: 'order_payment',
         linkedEntityId: paymentId,
       }),
-      Customer.updateOne(
-        { _id: order.customerId, userId },
-        { $inc: { totalReceivedCents: amount } }
-      ),
     ]);
 
+    await syncCustomerOrderStats(userId, order.customerId);
     invalidateUserDataCache(userId);
     res.status(201).json(serialize(order));
   })

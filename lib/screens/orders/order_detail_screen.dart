@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../models/order.dart';
 import '../../providers/order_provider.dart';
+import '../../providers/customer_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/financial_calculator.dart';
@@ -78,6 +79,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final provider = context.read<OrderProvider>();
     await provider.update(updated);
     if (mounted) {
+      context.read<CustomerProvider>().load(silent: true);
       context.read<DashboardProvider>().reload();
     }
     HapticFeedback.lightImpact();
@@ -92,6 +94,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (mounted) {
       await _load();
       if (mounted) {
+        context.read<CustomerProvider>().load(silent: true);
         context.read<DashboardProvider>().reload();
       }
     }
@@ -99,6 +102,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Future<void> _delete(BuildContext context) async {
     final op = context.read<OrderProvider>();
+    final cp = context.read<CustomerProvider>();
     final dash = context.read<DashboardProvider>();
     final router = GoRouter.of(context);
     final confirm = await showConfirmSheet(
@@ -111,6 +115,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
     if (confirm == true && mounted) {
       await op.delete(widget.orderId);
+      cp.load(silent: true);
       dash.reload();
       router.go('/orders');
     }
@@ -158,6 +163,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       : null,
                 );
             if (mounted) {
+              context.read<CustomerProvider>().load(silent: true);
               context.read<DashboardProvider>().reload();
             }
             _load();
@@ -688,10 +694,12 @@ class _OrderOverviewCard extends StatelessWidget {
                 child: _FinMetricBox(
                   label: context.tr('Остаток', 'Balance'),
                   amount: FinancialCalculator.formatCents(
-                    order.remainingCents,
+                    isCancelled ? 0 : order.remainingCents,
                     currency: currency,
                   ),
-                  color: isPaid ? colors.income : colors.warning,
+                  color: isCancelled
+                      ? colors.textMuted
+                      : (isPaid ? colors.income : colors.warning),
                 ),
               ),
             ],

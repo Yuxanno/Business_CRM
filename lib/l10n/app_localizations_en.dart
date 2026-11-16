@@ -9,10 +9,10 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'Business Manager';
+  String get appTitle => 'Business CRM';
 
   @override
-  String get appName => 'Business Manager';
+  String get appName => 'Business CRM';
 
   @override
   String get nav_home => 'Home';
