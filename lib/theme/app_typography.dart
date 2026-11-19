@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Typography scale for Business Manager.
+/// Typography scale for BizFlow.
 /// Uses system fonts: SF Pro on iOS, Roboto on Android.
 class AppTypography {
   AppTypography._();

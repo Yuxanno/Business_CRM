@@ -116,7 +116,7 @@ class _AuthBackdropState extends State<AuthBackdrop>
                       left: 24,
                       child: IgnorePointer(
                         child: Text(
-                          'BUSINESS',
+                          'BIZFLOW',
                           style: TextStyle(
                             fontSize: 68,
                             fontWeight: FontWeight.w900,

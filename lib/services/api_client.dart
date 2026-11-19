@@ -14,7 +14,7 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// HTTP client for the Business CRM API.
+/// HTTP client for the BizFlow API.
 /// Uses a persistent keep-alive [http.Client], caches the JWT in memory,
 /// and applies strict request timeouts so UI never stalls on slow networks.
 class ApiClient {

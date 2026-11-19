@@ -101,7 +101,7 @@ app.use('/api/debts', require('./routes/debts'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 
 app.get('/api', (req, res) => {
-  res.json({ message: 'Business CRM API', version: '1.0.0' });
+  res.json({ message: 'BizFlow API', version: '1.0.0' });
 });
 
 // ─── 404 fallback ─────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ app.use((err, req, res, next) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('\n' + '═'.repeat(70));
-  console.log('🚀 Business CRM Server');
+  console.log('🚀 BizFlow Server');
   console.log('═'.repeat(70));
   console.log(`✅ Сервер запущен:     http://localhost:${PORT}`);
   console.log(`✅ API:               http://localhost:${PORT}/api`);

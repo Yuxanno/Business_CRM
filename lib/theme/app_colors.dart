@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Centralized color tokens for Business Manager.
+/// Centralized color tokens for BizFlow.
 /// Never hardcode colors outside this file.
 class AppColors {
   AppColors._();

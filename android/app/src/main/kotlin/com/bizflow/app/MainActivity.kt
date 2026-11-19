@@ -1,4 +1,4 @@
-package com.businesscrm.app
+package com.bizflow.app
 
 import io.flutter.embedding.android.FlutterActivity
 

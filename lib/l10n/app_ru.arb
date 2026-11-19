@@ -1,8 +1,8 @@
 {
   "@@locale": "ru",
 
-  "appTitle": "Business CRM",
-  "appName": "Business CRM",
+  "appTitle": "BizFlow",
+  "appName": "BizFlow",
 
   "nav_home": "Главная",
   "nav_finance": "Финансы",

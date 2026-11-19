@@ -1,4 +1,4 @@
-# business_manager
+# BizFlow
 
 A new Flutter project.
 

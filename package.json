@@ -1,7 +1,7 @@
 {
-  "name": "biznes-crm",
+  "name": "bizflow",
   "version": "1.0.0",
-  "description": "Business CRM — mobile CRM app with Flutter frontend and Node.js backend",
+  "description": "BizFlow — mobile CRM app with Flutter frontend and Node.js backend",
   "private": true,
   "scripts": {
     "// ─── INSTALL ───────────────────────────────────────────────────────": "",

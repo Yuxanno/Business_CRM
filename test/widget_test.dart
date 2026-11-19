@@ -1,4 +1,4 @@
-// Widget tests for Business Manager.
+// Widget tests for BizFlow.
 // Full integration tests require a real device/emulator due to SQLite dependency.
 
 import 'package:flutter_test/flutter_test.dart';

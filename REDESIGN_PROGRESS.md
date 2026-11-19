@@ -1,4 +1,4 @@
-# Biznes CRM — План полного редизайна
+# BizFlow — План полного редизайна
 
 ## Выполнено
 - [x] 0.1. Главная страница (`home_screen.dart`, `finance_bar_chart.dart`)

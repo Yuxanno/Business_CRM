@@ -174,18 +174,28 @@ class _WelcomePage extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: colors.primary,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.business_center_rounded,
-                  size: 24,
                   color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: colors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ink.withValues(alpha: 0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Text(
-                'Business CRM',
+                'BizFlow',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
