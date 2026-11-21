@@ -45,21 +45,28 @@ class _AppStartupSplashState extends State<AppStartupSplash>
 
     final introCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1550),
+      duration: const Duration(milliseconds: 1350),
     );
     final exitCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 240),
     );
     _introCtrl = introCtrl;
     _exitCtrl = exitCtrl;
 
-    introCtrl.forward().whenComplete(() {
-      if (!mounted) return;
-      setState(() => _minIntroCompleted = true);
+    // Wait for Flutter's first rendered frame (when Android removes the static
+    // launch_background) before starting the splash animation clock.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 60), () {
+        if (!mounted) return;
+        introCtrl.forward().whenComplete(() {
+          if (!mounted) return;
+          setState(() => _minIntroCompleted = true);
+        });
+      });
     });
 
-    _safetyTimer = Timer(const Duration(milliseconds: 3800), () {
+    _safetyTimer = Timer(const Duration(milliseconds: 2400), () {
       if (!mounted) return;
       setState(() => _forceTimeoutReached = true);
     });
@@ -146,25 +153,27 @@ class _AppStartupSplashState extends State<AppStartupSplash>
         ),
         AbsorbPointer(
           absorbing: !_exiting,
-          child: AnimatedBuilder(
-            animation: Listenable.merge([introCtrl, exitCtrl]),
-            builder: (context, _) {
-              final t = introCtrl.value;
-              final exitOpacity =
-                  1.0 - Curves.easeOutCubic.transform(exitCtrl.value);
-              final logoScale = t < 0.14
-                  ? (0.88 + 0.12 * Curves.easeOutCubic.transform(t / 0.14))
-                  : 1.0;
-              final logoOffset = _computeLogoOffset(t);
-              final wordmarkOffset = _computeWordmarkOffset(t);
-              final loaderOpacity = t <= 0.86
-                  ? 0.0
-                  : Curves.easeOut.transform(((t - 0.86) / 0.14).clamp(0.0, 1.0));
+          child: FadeTransition(
+            opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
+              CurvedAnimation(parent: exitCtrl, curve: Curves.easeOutCubic),
+            ),
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: introCtrl,
+                builder: (context, _) {
+                  final t = introCtrl.value;
+                  final logoScale = t < 0.14
+                      ? (0.88 + 0.12 * Curves.easeOutCubic.transform(t / 0.14))
+                      : 1.0;
+                  final logoOffset = _computeLogoOffset(t);
+                  final wordmarkOffset = _computeWordmarkOffset(t);
+                  final loaderOpacity = t <= 0.86
+                      ? 0.0
+                      : Curves.easeOut
+                          .transform(((t - 0.86) / 0.14).clamp(0.0, 1.0));
 
-              return Opacity(
-                opacity: exitOpacity.clamp(0.0, 1.0),
-                child: ColoredBox(
-                  color: colors.background,
+                  return ColoredBox(
+                    color: colors.background,
                   child: Center(
                     child: SizedBox(
                       width: 280,
@@ -280,10 +289,11 @@ class _AppStartupSplashState extends State<AppStartupSplash>
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
+        ),
         ),
       ],
     );

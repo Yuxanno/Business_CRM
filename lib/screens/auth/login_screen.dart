@@ -572,8 +572,8 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
             Positioned(
-              top: 54,
-              right: 20,
+              top: 12,
+              right: 16,
               child: _AuthLanguageButton(
                 isEn: isEn,
                 onToggle: () {

@@ -61,7 +61,7 @@ router.get(
       .limit(limit + 1);
 
     if (compact) {
-      query.select('-notes');
+      query.select('-notes -description');
     }
 
     const rawItems = await query.lean();

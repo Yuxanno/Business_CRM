@@ -15,6 +15,8 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+dynamic _decodeJsonInIsolate(String source) => jsonDecode(source);
+
 /// HTTP client for the BizFlow API.
 /// Uses a persistent keep-alive [http.Client], caches the JWT in memory,
 /// and applies strict request timeouts so UI never stalls on slow networks.
@@ -167,7 +169,9 @@ class ApiClient {
 
     dynamic decoded;
     if (response.body.isNotEmpty) {
-      decoded = jsonDecode(response.body);
+      decoded = (!kIsWeb && response.body.length > 8192)
+          ? await compute(_decodeJsonInIsolate, response.body)
+          : jsonDecode(response.body);
     }
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -225,7 +229,9 @@ class ApiClient {
 
     dynamic decoded;
     if (response.body.isNotEmpty) {
-      decoded = jsonDecode(response.body);
+      decoded = (!kIsWeb && response.body.length > 8192)
+          ? await compute(_decodeJsonInIsolate, response.body)
+          : jsonDecode(response.body);
     }
 
     if (response.statusCode >= 200 && response.statusCode < 300) {

@@ -21,7 +21,7 @@ router.get(
     const now = new Date();
     const year = Number(req.query.year) || now.getFullYear();
     const month = Number(req.query.month) || now.getMonth() + 1;
-    const limit = Math.min(Math.max(Number(req.query.limit) || 30, 1), 100);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const tz = Math.max(-840, Math.min(840, Number(req.query.tz) || 0));
 
     const cacheKey = `u:${userId}:bootstrap:${year}:${month}:${tz}:${limit}`;
@@ -139,7 +139,7 @@ router.get(
       Customer.find({ userId }).select('name').lean(),
       // 9. Debts page 1
       Debt.find({ userId })
-        .select('-notes')
+        .select('-notes -description')
         .sort({ createdAt: -1, _id: -1 })
         .limit(limit + 1)
         .lean(),

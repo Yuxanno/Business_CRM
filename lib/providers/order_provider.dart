@@ -6,7 +6,7 @@ import '../services/local_cache.dart';
 import '../services/notification_service.dart';
 
 class OrderProvider extends ChangeNotifier {
-  static const int pageSize = 50;
+  static const int pageSize = 20;
   static const _cacheKey = 'orders_page1';
 
   final _orderRepo = OrderRepository();

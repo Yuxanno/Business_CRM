@@ -16,17 +16,16 @@ class _AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin {
   late final AnimationController _switchCtrl;
   late final Animation<double> _fadeAnim;
-  double _slideDir = 1.0;
 
   @override
   void initState() {
     super.initState();
     _switchCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 160),
       value: 1.0,
     );
-    _fadeAnim = Tween<double>(begin: 0.72, end: 1.0).animate(
+    _fadeAnim = Tween<double>(begin: 0.88, end: 1.0).animate(
       CurvedAnimation(parent: _switchCtrl, curve: Curves.easeOutCubic),
     );
   }
@@ -37,7 +36,6 @@ class _AppShellState extends State<AppShell>
     final oldIdx = oldWidget.navigationShell.currentIndex;
     final newIdx = widget.navigationShell.currentIndex;
     if (oldIdx != newIdx) {
-      _slideDir = newIdx >= oldIdx ? 1.0 : -1.0;
       _switchCtrl.forward(from: 0.0);
     }
   }
@@ -52,9 +50,6 @@ class _AppShellState extends State<AppShell>
     HapticFeedback.selectionClick();
     final currentIdx = widget.navigationShell.currentIndex;
     final isSame = index == currentIdx;
-    if (!isSame) {
-      _slideDir = index >= currentIdx ? 1.0 : -1.0;
-    }
     widget.navigationShell.goBranch(index, initialLocation: isSame);
   }
 
@@ -62,18 +57,11 @@ class _AppShellState extends State<AppShell>
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final currentIndex = widget.navigationShell.currentIndex;
-    final slideAnim = Tween<Offset>(
-      begin: Offset(_slideDir * 0.025, 0),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _switchCtrl, curve: Curves.easeOutCubic),
-    );
 
     return Scaffold(
-      body: FadeTransition(
-        opacity: _fadeAnim,
-        child: SlideTransition(
-          position: slideAnim,
+      body: RepaintBoundary(
+        child: FadeTransition(
+          opacity: _fadeAnim,
           child: widget.navigationShell,
         ),
       ),

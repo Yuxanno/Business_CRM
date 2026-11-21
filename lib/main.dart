@@ -29,8 +29,6 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  ApiClient.instance.startKeepAlive();
-
   final settingsProvider = SettingsProvider();
   final customerProvider = CustomerProvider();
   final orderProvider = OrderProvider();
@@ -45,16 +43,6 @@ void main() async {
       final bd = await rootBundle.load('assets/images/logo.png');
       splashLogoBytes = bd.buffer.asUint8List();
     } catch (_) {}
-  }
-
-  if (settingsProvider.isOnboardingDone) {
-    await Future.wait([
-      dashboardProvider.hydrateFromCache(),
-      financeProvider.hydrateFromCache(),
-      orderProvider.hydrateFromCache(),
-      customerProvider.hydrateFromCache(),
-      debtProvider.hydrateFromCache(),
-    ]);
   }
 
   // Dev only: flutter run --dart-define=SEED_CATEGORIES=true
@@ -91,7 +79,26 @@ void main() async {
     ),
   );
 
-  // Initialize notifications after first frame so startup splash animation never stalls.
+  // Hydrate caches AFTER runApp so the animated splash renders immediately on frame 1.
+  if (settingsProvider.isOnboardingDone) {
+    unawaited(() async {
+      await dashboardProvider.hydrateFromCache();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await financeProvider.hydrateFromCache();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await orderProvider.hydrateFromCache();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await debtProvider.hydrateFromCache();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await customerProvider.hydrateFromCache();
+    }());
+  }
+
+  // Start background keep-alive & notifications after initial splash settles.
+  unawaited(Future<void>.delayed(
+    const Duration(milliseconds: 1200),
+    () => ApiClient.instance.startKeepAlive(),
+  ));
   unawaited(Future<void>.delayed(
     const Duration(milliseconds: 1700),
     () => NotificationService.instance.init(),

@@ -3,35 +3,12 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 
 /// Architectural geometric backdrop for Auth screens.
-/// Light editorial surface with subtle animated shapes, a fine diagonal grid,
-/// and a stylized rising growth curve — high-FPS with zero blur shaders.
-class AuthBackdrop extends StatefulWidget {
+/// Fully static inside a single RepaintBoundary for rock-solid 60/120fps
+/// with zero idle GPU/CPU usage and zero per-frame layout passes.
+class AuthBackdrop extends StatelessWidget {
   const AuthBackdrop({super.key, required this.child});
 
   final Widget child;
-
-  @override
-  State<AuthBackdrop> createState() => _AuthBackdropState();
-}
-
-class _AuthBackdropState extends State<AuthBackdrop>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 14),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,144 +24,139 @@ class _AuthBackdropState extends State<AuthBackdrop>
           final colors = context.appColors;
           return Scaffold(
             backgroundColor: colors.background,
-            body: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, childWidget) {
-                final t = Curves.easeInOutSine.transform(_controller.value);
-                return Stack(
-                  children: [
-                    // 1. Subtle architectural grid & rising growth curve
-                    Positioned.fill(
-                      child: RepaintBoundary(
-                        child: CustomPaint(
-                          painter: _AuthCanvasPainter(
-                            progress: t,
-                            primary: AppColors.primary,
-                            ink: AppColors.ink,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // 2. Top-right soft geometric sphere
-                    Positioned(
-                      top: -105 + (t * 20),
-                      right: -75 + (t * 10),
-                      child: _SoftGeomShape(
-                        size: 270,
-                        radius: 108,
-                        angle: 0.15 + t * 0.08,
-                        color: AppColors.primary.withValues(alpha: 0.13),
-                      ),
-                    ),
-
-                    // 3. Mid-left breathing square accent
-                    Positioned(
-                      top: 195 - (t * 16),
-                      left: -105,
-                      child: _SoftGeomShape(
-                        size: 210,
-                        radius: 72,
-                        angle: -0.2 + t * 0.06,
-                        color: AppColors.primaryLight.withValues(alpha: 0.11),
-                      ),
-                    ),
-
-                    // 4. Bottom-right architectural rotated frame
-                    Positioned(
-                      bottom: -55 + (t * 18),
-                      right: -35,
-                      child: Transform.rotate(
-                        angle: math.pi / 7 + (t * 0.05),
-                        child: Container(
-                          width: 190,
-                          height: 190,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(36),
-                            border: Border.all(
-                              color: AppColors.ink.withValues(alpha: 0.07),
-                              width: 1.8,
+            body: Stack(
+              children: [
+                // Static decorative canvas isolated in a single RepaintBoundary
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: Stack(
+                      children: [
+                        // 1. Subtle architectural grid & rising growth curve
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: const _AuthCanvasPainter(
+                              primary: AppColors.primary,
+                              ink: AppColors.ink,
                             ),
                           ),
                         ),
-                      ),
-                    ),
 
-                    // 5. Large editorial watermark typography
-                    Positioned(
-                      top: 64,
-                      left: 24,
-                      child: IgnorePointer(
-                        child: Text(
-                          'BIZFLOW',
-                          style: TextStyle(
-                            fontSize: 68,
-                            fontWeight: FontWeight.w900,
-                            height: 0.9,
-                            letterSpacing: -3.2,
-                            color: AppColors.ink.withValues(alpha: 0.045),
+                        // 2. Top-right soft geometric sphere
+                        Positioned(
+                          top: -98,
+                          right: -70,
+                          child: _SoftGeomShape(
+                            size: 270,
+                            radius: 108,
+                            angle: 0.18,
+                            color: AppColors.primary.withValues(alpha: 0.13),
                           ),
                         ),
-                      ),
-                    ),
 
-                    // 6. Floating subtle "growth" pill accent in top-right
-                    Positioned(
-                      top: 54 + (t * 6),
-                      right: 22,
-                      child: IgnorePointer(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
+                        // 3. Mid-left breathing square accent
+                        Positioned(
+                          top: 190,
+                          left: -105,
+                          child: _SoftGeomShape(
+                            size: 210,
+                            radius: 72,
+                            angle: -0.18,
+                            color:
+                                AppColors.primaryLight.withValues(alpha: 0.11),
                           ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.78),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: AppColors.primary.withValues(alpha: 0.18),
+                        ),
+
+                        // 4. Bottom-right architectural rotated frame
+                        Positioned(
+                          bottom: -50,
+                          right: -35,
+                          child: Transform.rotate(
+                            angle: math.pi / 7,
+                            child: Container(
+                              width: 190,
+                              height: 190,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(36),
+                                border: Border.all(
+                                  color: AppColors.ink.withValues(alpha: 0.07),
+                                  width: 1.8,
+                                ),
+                              ),
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.ink.withValues(alpha: 0.04),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 7,
-                                height: 7,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.primary,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'CRM • FINANCE',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.8,
-                                  color: AppColors.ink.withValues(alpha: 0.75),
-                                ),
-                              ),
-                            ],
                           ),
                         ),
-                      ),
-                    ),
 
-                    // Foreground content
-                    SafeArea(child: childWidget!),
-                  ],
-                );
-              },
-              child: widget.child,
+                        // 5. Large editorial watermark typography
+                        Positioned(
+                          top: 64,
+                          left: 24,
+                          child: IgnorePointer(
+                            child: Text(
+                              'BIZFLOW',
+                              style: TextStyle(
+                                fontSize: 68,
+                                fontWeight: FontWeight.w900,
+                                height: 0.9,
+                                letterSpacing: -3.2,
+                                color: AppColors.ink.withValues(alpha: 0.045),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // 6. Subtle "CRM • FINANCE" pill below language switcher
+                        Positioned(
+                          top: 58,
+                          right: 16,
+                          child: IgnorePointer(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.78),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.18),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.primary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'CRM • FINANCE',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.8,
+                                      color:
+                                          AppColors.ink.withValues(alpha: 0.75),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Foreground content
+                SafeArea(child: child),
+              ],
             ),
           );
         },
@@ -224,12 +196,10 @@ class _SoftGeomShape extends StatelessWidget {
 
 class _AuthCanvasPainter extends CustomPainter {
   const _AuthCanvasPainter({
-    required this.progress,
     required this.primary,
     required this.ink,
   });
 
-  final double progress;
   final Color primary;
   final Color ink;
 
@@ -262,17 +232,17 @@ class _AuthCanvasPainter extends CustomPainter {
       ..moveTo(-20, startY)
       ..cubicTo(
         size.width * 0.25,
-        startY - 30 - (progress * 10),
+        startY - 34,
         size.width * 0.55,
-        startY - 12 + (progress * 8),
+        startY - 10,
         size.width + 20,
-        startY - 88 - (progress * 12),
+        startY - 92,
       );
 
     canvas.drawPath(path, curvePaint);
   }
 
   @override
-  bool shouldRepaint(_AuthCanvasPainter oldDelegate) =>
-      oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _AuthCanvasPainter oldDelegate) =>
+      oldDelegate.primary != primary || oldDelegate.ink != ink;
 }

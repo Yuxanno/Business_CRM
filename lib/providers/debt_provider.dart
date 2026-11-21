@@ -6,7 +6,7 @@ import '../services/local_cache.dart';
 import '../services/notification_service.dart';
 
 class DebtProvider extends ChangeNotifier {
-  static const int pageSize = 50;
+  static const int pageSize = 20;
   static const _cacheKey = 'debts_page1';
 
   final _repo = DebtRepository();
