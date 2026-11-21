@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/notification_service.dart';
+import '../../components/notifications_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -723,6 +724,76 @@ class _Header extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
+
+        // Notifications Bell Button with Unread Badge
+        ValueListenableBuilder<List<AppNotification>>(
+          valueListenable: NotificationService.instance.itemsNotifier,
+          builder: (context, items, _) {
+            final unread = items.where((n) => !n.isRead).length;
+            return _ScaleTap(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                showNotificationsSheet(context);
+              },
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: colors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ink.withValues(alpha: 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(
+                      unread > 0
+                          ? Icons.notifications_active_outlined
+                          : Icons.notifications_none_rounded,
+                      size: 19,
+                      color: unread > 0 ? colors.primary : colors.textSecondary,
+                    ),
+                    if (unread > 0)
+                      Positioned(
+                        top: 5,
+                        right: 5,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          constraints: const BoxConstraints(
+                            minWidth: 14,
+                            minHeight: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger,
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            unread > 9 ? '9+' : '$unread',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(width: 6),
 
         // Interactive Month Stepper + Picker Pill
         Container(

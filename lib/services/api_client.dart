@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -21,11 +22,14 @@ class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
 
-  static const _requestTimeout = Duration(seconds: 8);
+  static const _requestTimeout = Duration(seconds: 25);
+  static const String _defaultRenderUrl = 'https://business-crm-da1s.onrender.com';
 
   final http.Client _client = http.Client();
   String? _cachedToken;
   bool _tokenLoaded = false;
+  Timer? _keepAliveTimer;
+  bool _pingInFlight = false;
 
   // Simple ETag cache per GET path so unchanged responses can return 304
   final Map<String, String> _etags = {};
@@ -35,14 +39,38 @@ class ApiClient {
 
   static String get baseUrl {
     if (_envApiUrl.isNotEmpty) return _envApiUrl;
-    if (kIsWeb) {
-      final port = Uri.base.port;
-      if (port == 3001 || port == 80 || port == 443) {
-        return '';
-      }
-      return 'http://localhost:3001';
+    if (kIsWeb && Uri.base.host == 'business-crm-da1s.onrender.com') {
+      return '';
     }
-    return 'http://localhost:3001';
+    return _defaultRenderUrl;
+  }
+
+  /// Sends a lightweight /health ping every 5 seconds so the Render backend stays warm.
+  void startKeepAlive() {
+    if (_keepAliveTimer != null) return;
+    _pingHealth();
+    _keepAliveTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _pingHealth(),
+    );
+  }
+
+  void stopKeepAlive() {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
+  }
+
+  Future<void> _pingHealth() async {
+    if (_pingInFlight) return;
+    _pingInFlight = true;
+    try {
+      await _client
+          .get(Uri.parse('$baseUrl/health'))
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {
+    } finally {
+      _pingInFlight = false;
+    }
   }
 
   void setToken(String? token) {

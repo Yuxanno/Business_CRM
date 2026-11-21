@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'services/api_client.dart';
 import 'services/notification_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -28,6 +29,7 @@ void main() async {
   ]);
 
   await NotificationService.instance.init();
+  ApiClient.instance.startKeepAlive();
 
   final settingsProvider = SettingsProvider();
   final customerProvider = CustomerProvider();

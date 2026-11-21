@@ -11,22 +11,74 @@ import '../theme/app_colors.dart';
 import 'financial_calculator.dart';
 import 'notification_platform.dart';
 
+enum AppNotificationUrgency { overdue, today, tomorrow }
+
+enum AppNotificationTarget { debt, order }
+
+class AppNotification {
+  const AppNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.amountLabel,
+    required this.urgency,
+    required this.targetType,
+    required this.targetId,
+    required this.isPayable,
+    required this.isRead,
+    this.dueDate,
+  });
+
+  final String id;
+  final String title;
+  final String body;
+  final String amountLabel;
+  final DateTime? dueDate;
+  final AppNotificationUrgency urgency;
+  final AppNotificationTarget targetType;
+  final String targetId;
+  final bool isPayable;
+  final bool isRead;
+
+  AppNotification copyWith({bool? isRead}) => AppNotification(
+        id: id,
+        title: title,
+        body: body,
+        amountLabel: amountLabel,
+        dueDate: dueDate,
+        urgency: urgency,
+        targetType: targetType,
+        targetId: targetId,
+        isPayable: isPayable,
+        isRead: isRead ?? this.isRead,
+      );
+}
+
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
   static const _askedKey = 'notif_permission_asked';
   static const _enabledKey = 'notif_enabled';
+  static const _readIdsKey = 'notif_read_ids';
+  static const _dismissedIdsKey = 'notif_dismissed_ids';
+
+  final ValueNotifier<List<AppNotification>> itemsNotifier =
+      ValueNotifier<List<AppNotification>>([]);
 
   bool _initialized = false;
   bool _enabled = false;
   bool _promptVisible = false;
+  Set<String> _readIds = {};
+  Set<String> _dismissedIds = {};
 
   List<Debt> _lastDebts = const [];
   List<Order> _lastOrders = const [];
   String _lastLocale = 'ru';
   String _lastCurrency = 'UZS';
   bool _hasSnapshot = false;
+
+  int get unreadCount => itemsNotifier.value.where((n) => !n.isRead).length;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -35,6 +87,43 @@ class NotificationService {
       await initPlatformNotifications();
       final prefs = await SharedPreferences.getInstance();
       _enabled = prefs.getBool(_enabledKey) ?? false;
+      _readIds = (prefs.getStringList(_readIdsKey) ?? const []).toSet();
+      _dismissedIds =
+          (prefs.getStringList(_dismissedIdsKey) ?? const []).toSet();
+    } catch (_) {}
+  }
+
+  Future<void> markAsRead(String id) async {
+    if (_readIds.contains(id)) return;
+    _readIds = {..._readIds, id};
+    itemsNotifier.value = itemsNotifier.value
+        .map((n) => n.id == id ? n.copyWith(isRead: true) : n)
+        .toList();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_readIdsKey, _readIds.toList());
+    } catch (_) {}
+  }
+
+  Future<void> markAllAsRead() async {
+    final current = itemsNotifier.value;
+    if (current.isEmpty) return;
+    _readIds = {..._readIds, ...current.map((n) => n.id)};
+    itemsNotifier.value =
+        current.map((n) => n.copyWith(isRead: true)).toList();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_readIdsKey, _readIds.toList());
+    } catch (_) {}
+  }
+
+  Future<void> deleteNotification(String id) async {
+    _dismissedIds = {..._dismissedIds, id};
+    itemsNotifier.value =
+        itemsNotifier.value.where((n) => n.id != id).toList();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_dismissedIdsKey, _dismissedIds.toList());
     } catch (_) {}
   }
 
@@ -202,11 +291,11 @@ class NotificationService {
   Future<void> _syncInternal() async {
     await init();
     await cancelAllPlatformNotifications();
-    if (!_enabled) return;
 
     final isEn = _lastLocale == 'en';
     final currency = _lastCurrency;
     final prefs = await SharedPreferences.getInstance();
+    final inAppItems = <AppNotification>[];
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -235,6 +324,7 @@ class NotificationService {
       required String title,
       required String body,
     }) async {
+      if (!_enabled) return;
       final shownKey = 'notif_shown_${todayKey}_$uniqueKey';
       if (prefs.getBool(shownKey) == true) return;
       await prefs.setBool(shownKey, true);
@@ -242,6 +332,34 @@ class NotificationService {
         id: nextScheduleId++,
         title: title,
         body: body,
+      );
+    }
+
+    void addInAppItem({
+      required String id,
+      required String title,
+      required String body,
+      required String amountLabel,
+      required DateTime? dueDate,
+      required AppNotificationUrgency urgency,
+      required AppNotificationTarget targetType,
+      required String targetId,
+      required bool isPayable,
+    }) {
+      if (_dismissedIds.contains(id)) return;
+      inAppItems.add(
+        AppNotification(
+          id: id,
+          title: title,
+          body: body,
+          amountLabel: amountLabel,
+          dueDate: dueDate,
+          urgency: urgency,
+          targetType: targetType,
+          targetId: targetId,
+          isPayable: isPayable,
+          isRead: _readIds.contains(id),
+        ),
       );
     }
 
@@ -268,6 +386,17 @@ class NotificationService {
             : (isPayable
                 ? 'Нужно оплатить $amount (срок был ${formatShort(due)})'
                 : 'Вам должны вернуть $amount (срок был ${formatShort(due)})');
+        addInAppItem(
+          id: 'debt_overdue_${debt.id}',
+          title: title,
+          body: body,
+          amountLabel: amount,
+          dueDate: due,
+          urgency: AppNotificationUrgency.overdue,
+          targetType: AppNotificationTarget.debt,
+          targetId: debt.id,
+          isPayable: isPayable,
+        );
         await notifyOnceToday(
           uniqueKey: 'debt_overdue_${debt.id}',
           title: title,
@@ -288,6 +417,17 @@ class NotificationService {
             : (isPayable
                 ? 'Сумма к оплате сегодня: $amount'
                 : 'Ожидается возврат: $amount');
+        addInAppItem(
+          id: 'debt_today_${debt.id}',
+          title: title,
+          body: body,
+          amountLabel: amount,
+          dueDate: due,
+          urgency: AppNotificationUrgency.today,
+          targetType: AppNotificationTarget.debt,
+          targetId: debt.id,
+          isPayable: isPayable,
+        );
         await notifyOnceToday(
           uniqueKey: 'debt_today_${debt.id}',
           title: title,
@@ -308,13 +448,24 @@ class NotificationService {
             : (isPayable
                 ? 'Завтра срок оплаты: $amount'
                 : 'Завтра вам должны заплатить $amount');
+        addInAppItem(
+          id: 'debt_tomorrow_${debt.id}',
+          title: title,
+          body: body,
+          amountLabel: amount,
+          dueDate: due,
+          urgency: AppNotificationUrgency.tomorrow,
+          targetType: AppNotificationTarget.debt,
+          targetId: debt.id,
+          isPayable: isPayable,
+        );
         await notifyOnceToday(
           uniqueKey: 'debt_tomorrow_${debt.id}',
           title: title,
           body: body,
         );
 
-        if (!kIsWeb) {
+        if (_enabled && !kIsWeb) {
           await schedulePlatformNotification(
             id: nextScheduleId++,
             title: isEn
@@ -335,7 +486,7 @@ class NotificationService {
                 DateTime(dueDay.year, dueDay.month, dueDay.day, 9, 0),
           );
         }
-      } else if (!kIsWeb) {
+      } else if (_enabled && !kIsWeb) {
         // Schedule 1 day before and on the due day at 09:00
         final dayBefore = dueDay.subtract(const Duration(days: 1));
         await schedulePlatformNotification(
@@ -391,37 +542,76 @@ class NotificationService {
       final amount = formatAmount(order.remainingCents);
 
       if (dueDay.isBefore(today)) {
+        final title = isEn
+            ? 'Overdue order payment: ${order.customerName}'
+            : 'Просрочена оплата заказа: ${order.customerName}';
+        final body = isEn
+            ? '${order.title} — $amount (due ${formatShort(due)})'
+            : '«${order.title}» — $amount (срок был ${formatShort(due)})';
+        addInAppItem(
+          id: 'order_overdue_${order.id}',
+          title: title,
+          body: body,
+          amountLabel: amount,
+          dueDate: due,
+          urgency: AppNotificationUrgency.overdue,
+          targetType: AppNotificationTarget.order,
+          targetId: order.id,
+          isPayable: false,
+        );
         await notifyOnceToday(
           uniqueKey: 'order_overdue_${order.id}',
-          title: isEn
-              ? 'Overdue order payment: ${order.customerName}'
-              : 'Просрочена оплата заказа: ${order.customerName}',
-          body: isEn
-              ? '${order.title} — $amount (due ${formatShort(due)})'
-              : '«${order.title}» — $amount (срок был ${formatShort(due)})',
+          title: title,
+          body: body,
         );
       } else if (dueDay.isAtSameMomentAs(today)) {
+        final title = isEn
+            ? 'Order payment due today: ${order.customerName}'
+            : 'Сегодня оплата по заказу: ${order.customerName}';
+        final body = isEn
+            ? '${order.title} — expected today: $amount'
+            : '«${order.title}» — к оплате сегодня: $amount';
+        addInAppItem(
+          id: 'order_today_${order.id}',
+          title: title,
+          body: body,
+          amountLabel: amount,
+          dueDate: due,
+          urgency: AppNotificationUrgency.today,
+          targetType: AppNotificationTarget.order,
+          targetId: order.id,
+          isPayable: false,
+        );
         await notifyOnceToday(
           uniqueKey: 'order_today_${order.id}',
-          title: isEn
-              ? 'Order payment due today: ${order.customerName}'
-              : 'Сегодня оплата по заказу: ${order.customerName}',
-          body: isEn
-              ? '${order.title} — expected today: $amount'
-              : '«${order.title}» — к оплате сегодня: $amount',
+          title: title,
+          body: body,
         );
       } else if (dueDay.isAtSameMomentAs(tomorrow)) {
+        final title = isEn
+            ? 'Order payment due tomorrow: ${order.customerName}'
+            : 'Завтра оплата по заказу: ${order.customerName}';
+        final body = isEn
+            ? '${order.title} — expected tomorrow: $amount'
+            : '«${order.title}» — завтра должны оплатить $amount';
+        addInAppItem(
+          id: 'order_tomorrow_${order.id}',
+          title: title,
+          body: body,
+          amountLabel: amount,
+          dueDate: due,
+          urgency: AppNotificationUrgency.tomorrow,
+          targetType: AppNotificationTarget.order,
+          targetId: order.id,
+          isPayable: false,
+        );
         await notifyOnceToday(
           uniqueKey: 'order_tomorrow_${order.id}',
-          title: isEn
-              ? 'Order payment due tomorrow: ${order.customerName}'
-              : 'Завтра оплата по заказу: ${order.customerName}',
-          body: isEn
-              ? '${order.title} — expected tomorrow: $amount'
-              : '«${order.title}» — завтра должны оплатить $amount',
+          title: title,
+          body: body,
         );
 
-        if (!kIsWeb) {
+        if (_enabled && !kIsWeb) {
           await schedulePlatformNotification(
             id: nextScheduleId++,
             title: isEn
@@ -434,7 +624,7 @@ class NotificationService {
                 DateTime(dueDay.year, dueDay.month, dueDay.day, 9, 0),
           );
         }
-      } else if (!kIsWeb) {
+      } else if (_enabled && !kIsWeb) {
         final dayBefore = dueDay.subtract(const Duration(days: 1));
         await schedulePlatformNotification(
           id: nextScheduleId++,
@@ -460,5 +650,8 @@ class NotificationService {
         );
       }
     }
+
+    inAppItems.sort((a, b) => a.urgency.index.compareTo(b.urgency.index));
+    itemsNotifier.value = inAppItems;
   }
 }
