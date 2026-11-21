@@ -52,13 +52,17 @@ class _NotificationsSheet extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
                 child: Row(
                   children: [
-                    Text(
-                      context.tr('Уведомления', 'Notifications'),
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: colors.textPrimary,
-                        letterSpacing: -0.3,
+                    Flexible(
+                      child: Text(
+                        context.tr('Уведомления', 'Notifications'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: colors.textPrimary,
+                          letterSpacing: -0.3,
+                        ),
                       ),
                     ),
                     if (unreadCount > 0) ...[
@@ -82,7 +86,7 @@ class _NotificationsSheet extends StatelessWidget {
                         ),
                       ),
                     ],
-                    const Spacer(),
+                    const SizedBox(width: 6),
                     if (unreadCount > 0)
                       TextButton.icon(
                         onPressed: () {
@@ -91,22 +95,24 @@ class _NotificationsSheet extends StatelessWidget {
                         },
                         icon: Icon(
                           Icons.done_all_rounded,
-                          size: 16,
+                          size: 15,
                           color: colors.primary,
                         ),
                         label: Text(
                           context.tr('Прочитать всё', 'Read all'),
                           style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: colors.primary,
                           ),
                         ),
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
+                            horizontal: 8,
+                            vertical: 4,
                           ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                       ),
                     IconButton(
@@ -116,6 +122,11 @@ class _NotificationsSheet extends StatelessWidget {
                         color: colors.textSecondary,
                       ),
                       visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints(
+                        minWidth: 34,
+                        minHeight: 34,
+                      ),
+                      padding: EdgeInsets.zero,
                     ),
                   ],
                 ),

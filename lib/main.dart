@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,7 +29,6 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  await NotificationService.instance.init();
   ApiClient.instance.startKeepAlive();
 
   final settingsProvider = SettingsProvider();
@@ -90,6 +90,12 @@ void main() async {
       child: BusinessManagerApp(splashLogoBytes: splashLogoBytes),
     ),
   );
+
+  // Initialize notifications after first frame so startup splash animation never stalls.
+  unawaited(Future<void>.delayed(
+    const Duration(milliseconds: 1700),
+    () => NotificationService.instance.init(),
+  ));
 }
 
 class BusinessManagerApp extends StatefulWidget {

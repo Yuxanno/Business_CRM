@@ -242,17 +242,25 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
         // Top row: Legend + Chart Mode Switcher
         Row(
           children: [
-            _LegendDot(
-                color: colors.income,
-                label: context.tr('Доходы', 'Income')),
-            const SizedBox(width: AppSpacing.md),
-            _LegendDot(
-                color: colors.expense,
-                label: context.tr('Расходы', 'Expenses')),
-            const Spacer(),
+            Expanded(
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _LegendDot(
+                      color: colors.income,
+                      label: context.tr('Доходы', 'Income')),
+                  _LegendDot(
+                      color: colors.expense,
+                      label: context.tr('Расходы', 'Expenses')),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
             // Sliding pill mode toggle (Дни | Волна)
             SizedBox(
-              width: 148,
+              width: 136,
               height: 32,
               child: Container(
                 padding: const EdgeInsets.all(2),
@@ -441,27 +449,36 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
             children: [
               Icon(Icons.insights_rounded, size: 15, color: colors.primary),
               const SizedBox(width: 8),
-              Text(
-                context.tr(
-                  'Активных дней: ${activeDays.length}',
-                  'Active days: ${activeDays.length}',
-                ),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textSecondary,
+              Flexible(
+                child: Text(
+                  context.tr(
+                    'Активных дней: ${activeDays.length}',
+                    'Active days: ${activeDays.length}',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textSecondary,
+                  ),
                 ),
               ),
-              const Spacer(),
-              Text(
-                context.tr(
-                  'Пик активности: $peakDay $monthShort',
-                  'Peak day: $monthShort $peakDay',
-                ),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: colors.textMuted,
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  context.tr(
+                    'Пик активности: $peakDay $monthShort',
+                    'Peak day: $monthShort $peakDay',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: colors.textMuted,
+                  ),
                 ),
               ),
             ],

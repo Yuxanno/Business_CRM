@@ -723,7 +723,7 @@ class _Header extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
 
         // Notifications Bell Button with Unread Badge
         ValueListenableBuilder<List<AppNotification>>(
@@ -736,8 +736,8 @@ class _Header extends StatelessWidget {
                 showNotificationsSheet(context);
               },
               child: Container(
-                width: 38,
-                height: 38,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: colors.surface,
                   borderRadius: BorderRadius.circular(14),
@@ -797,10 +797,10 @@ class _Header extends StatelessWidget {
 
         // Interactive Month Stepper + Picker Pill
         Container(
-          height: 38,
+          height: 36,
           decoration: BoxDecoration(
             color: colors.surface,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: colors.border),
             boxShadow: [
               BoxShadow(
@@ -817,10 +817,10 @@ class _Header extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => _shiftMonth(context, -1),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Icon(
                     Icons.chevron_left_rounded,
-                    size: 18,
+                    size: 17,
                     color: colors.textSecondary,
                   ),
                 ),
@@ -829,7 +829,7 @@ class _Header extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => _pickMonth(context),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -838,8 +838,8 @@ class _Header extends StatelessWidget {
                         child: dashboard.isRefreshing
                             ? SizedBox(
                                 key: const ValueKey('month-loading'),
-                                width: 13,
-                                height: 13,
+                                width: 12,
+                                height: 12,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   color: colors.primary,
@@ -848,18 +848,18 @@ class _Header extends StatelessWidget {
                             : Icon(
                                 Icons.calendar_month_rounded,
                                 key: const ValueKey('month-icon'),
-                                size: 14,
+                                size: 13,
                                 color: colors.primary,
                               ),
                       ),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 4),
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 180),
                         child: Text(
                           DateHelper.formatMonthYear(selectedDate),
                           key: ValueKey('${dashboard.year}-${dashboard.month}'),
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11.5,
                             fontWeight: FontWeight.w700,
                             color: colors.textPrimary,
                           ),

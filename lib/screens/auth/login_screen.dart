@@ -545,15 +545,20 @@ class _LoginScreenState extends State<LoginScreen>
                         color: colors.textMuted,
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        context.tr(
-                          'Ваши финансы и база клиентов под защитой',
-                          'Your finances and customer base are protected',
-                        ),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: colors.textMuted,
+                      Flexible(
+                        child: Text(
+                          context.tr(
+                            'Ваши финансы и база клиентов под защитой',
+                            'Your finances and customer base are protected',
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            color: colors.textMuted,
+                          ),
                         ),
                       ),
                     ],
@@ -567,8 +572,8 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
             Positioned(
-              top: 12,
-              right: 16,
+              top: 54,
+              right: 20,
               child: _AuthLanguageButton(
                 isEn: isEn,
                 onToggle: () {
