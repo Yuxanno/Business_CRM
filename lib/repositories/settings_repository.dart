@@ -8,6 +8,10 @@ class SettingsRepository {
 
   Future<AppSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('authToken');
+    final hasToken = token != null && token.isNotEmpty;
+    ApiClient.instance.setToken(token);
+
     return AppSettings(
       businessName: prefs.getString('${_prefix}businessName') ?? '',
       ownerName: prefs.getString('${_prefix}ownerName') ?? '',
@@ -16,8 +20,8 @@ class SettingsRepository {
       themeMode: prefs.getString('${_prefix}themeMode') ?? 'light',
       dateFormat:
           prefs.getString('${_prefix}dateFormat') ?? 'dd.MM.yyyy',
-      isOnboardingDone:
-          prefs.getBool('${_prefix}isOnboardingDone') ?? false,
+      isOnboardingDone: hasToken &&
+          (prefs.getBool('${_prefix}isOnboardingDone') ?? false),
     );
   }
 

@@ -37,6 +37,21 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   @override
   void initState() {
     super.initState();
+    final cachedCustomer = context
+        .read<CustomerProvider>()
+        .allCustomers
+        .where((c) => c.id == widget.customerId)
+        .firstOrNull;
+    final cachedOrders = context
+        .read<OrderProvider>()
+        .allOrders
+        .where((o) => o.customerId == widget.customerId)
+        .toList();
+    if (cachedCustomer != null) {
+      _customer = cachedCustomer;
+      _orders = cachedOrders;
+      _loading = false;
+    }
     _load();
   }
 
@@ -48,12 +63,12 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     final results = await Future.wait([
       customerProvider.getById(widget.customerId),
       orderProvider.getByCustomer(widget.customerId),
-      if (debtProvider.all.isEmpty) debtProvider.load(),
+      if (debtProvider.all.isEmpty) debtProvider.load(silent: true),
     ]);
 
     if (mounted) {
       setState(() {
-        _customer = results[0] as Customer?;
+        _customer = (results[0] as Customer?) ?? _customer;
         _orders = results[1] as List<Order>;
         _loading = false;
       });

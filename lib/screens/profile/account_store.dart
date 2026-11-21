@@ -129,6 +129,7 @@ class AccountStore {
     await prefs.remove('authToken');
     await prefs.remove('userName');
     await prefs.remove('userLogin');
+    await prefs.setBool('settings_isOnboardingDone', false);
     ApiClient.instance.clearSessionCache();
     await LocalCache.clearAll();
   }

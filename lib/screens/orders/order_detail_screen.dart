@@ -18,6 +18,7 @@ import '../../components/app_confirm_sheet.dart';
 import '../../components/app_modal_sheet.dart';
 import '../../components/app_status_badge.dart';
 import '../../components/form_widgets.dart';
+import '../../components/voice_note_field.dart';
 
 const double _kPagePadding = 20.0;
 
@@ -38,17 +39,28 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   void initState() {
     super.initState();
+    final cached = context
+        .read<OrderProvider>()
+        .allOrders
+        .where((o) => o.id == widget.orderId)
+        .firstOrNull;
+    if (cached != null) {
+      _order = cached;
+      _loading = false;
+    }
     _load();
   }
 
   Future<void> _load() async {
     final provider = context.read<OrderProvider>();
-    final order = await provider.getById(widget.orderId);
-    final payments = await provider.getPaymentsForOrder(widget.orderId);
+    final results = await Future.wait([
+      provider.getById(widget.orderId),
+      provider.getPaymentsForOrder(widget.orderId),
+    ]);
     if (mounted) {
       setState(() {
-        _order = order;
-        _payments = payments;
+        _order = (results[0] as Order?) ?? _order;
+        _payments = results[1] as List<OrderPayment>;
         _loading = false;
       });
     }
@@ -214,13 +226,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             const SizedBox(height: 16),
             SheetField(
               label: context.tr('ЗАМЕТКА К ПЛАТЕЖУ', 'PAYMENT NOTE'),
-              child: FormTextField(
+              child: VoiceNoteField(
                 controller: notesCtrl,
                 prefixIcon: Icons.notes_rounded,
                 hint: context.tr(
                   'Наличные, перевод на карту и т.д.',
                   'Cash, card transfer, etc.',
                 ),
+                maxLines: 2,
               ),
             ),
           ],

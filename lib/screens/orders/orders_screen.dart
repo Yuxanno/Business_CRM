@@ -48,9 +48,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Future<void> _reload() async {
     HapticFeedback.mediumImpact();
-    await context.read<OrderProvider>().load();
+    await context.read<OrderProvider>().load(force: true);
     if (mounted) {
-      context.read<CustomerProvider>().load(silent: true);
+      context.read<CustomerProvider>().load(silent: true, force: true);
       context.read<DashboardProvider>().reload();
     }
   }
@@ -59,11 +59,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
     HapticFeedback.lightImpact();
     await context.push(route);
     if (mounted) {
-      await context.read<OrderProvider>().load();
-      if (mounted) {
-        context.read<CustomerProvider>().load(silent: true);
-        context.read<DashboardProvider>().reload();
-      }
+      context.read<CustomerProvider>().load(silent: true, force: true);
+      context.read<DashboardProvider>().reload();
     }
   }
 

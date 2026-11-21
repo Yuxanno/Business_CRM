@@ -5,7 +5,7 @@ import '../repositories/transaction_repository.dart';
 import '../services/local_cache.dart';
 
 class FinanceProvider extends ChangeNotifier {
-  static const int pageSize = 25;
+  static const int pageSize = 50;
   final _repo = TransactionRepository();
 
   List<AppTransaction> _transactions = [];
@@ -17,6 +17,7 @@ class FinanceProvider extends ChangeNotifier {
   bool _isLoadingMore = false;
   bool _hasMore = false;
   bool _hasLoadedOnce = false;
+  DateTime? _lastFetchedAt;
   String? _error;
 
   // Aggregates for selected month
@@ -75,12 +76,93 @@ class FinanceProvider extends ChangeNotifier {
         .fold(0, (sum, t) => sum + t.amountCents);
   }
 
-  /// Loads the first page (25 items) + monthly totals in a SINGLE HTTP request.
+  Future<void> hydrateFromCache() async {
+    final y = _selectedYear;
+    final m = _selectedMonth;
+    final c = await LocalCache.readMap('${_cacheKey(y, m)}_counts');
+    if (c != null) {
+      _counts = (
+        total: (c['total'] as num?)?.toInt() ?? 0,
+        income: (c['income'] as num?)?.toInt() ?? 0,
+        expense: (c['expense'] as num?)?.toInt() ?? 0,
+      );
+    }
+    final cached = await LocalCache.readMap(_cacheKey(y, m));
+    if (cached != null) {
+      final rawItems = (cached['items'] as List?) ?? const [];
+      _transactions = rawItems
+          .map((e) =>
+              AppTransaction.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+      _hasMore = cached['hasMore'] == true;
+      _incomeCents = (cached['incomeCents'] as num?)?.toInt() ?? 0;
+      _expenseCents = (cached['expenseCents'] as num?)?.toInt() ?? 0;
+      _hasLoadedOnce = true;
+    }
+  }
+
+  void applyBootstrapPayload(
+    Map<String, dynamic> json, {
+    required int year,
+    required int month,
+  }) {
+    _selectedYear = year;
+    _selectedMonth = month;
+    final rawItems = (json['items'] as List?) ?? const [];
+    _transactions = rawItems
+        .map((e) => AppTransaction.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    _hasMore = json['hasMore'] == true;
+    _hasLoadedOnce = true;
+    _isLoading = false;
+    _lastFetchedAt = DateTime.now();
+
+    final rawCounts = json['counts'];
+    if (rawCounts is Map) {
+      _counts = (
+        total: (rawCounts['total'] as num?)?.toInt() ?? _transactions.length,
+        income: (rawCounts['income'] as num?)?.toInt() ?? 0,
+        expense: (rawCounts['expense'] as num?)?.toInt() ?? 0,
+      );
+      unawaited(LocalCache.writeMap('${_cacheKey(year, month)}_counts', {
+        'total': _counts!.total,
+        'income': _counts!.income,
+        'expense': _counts!.expense,
+      }));
+    }
+
+    _incomeCents = (json['incomeCents'] as num?)?.toInt() ?? 0;
+    _expenseCents = (json['expenseCents'] as num?)?.toInt() ?? 0;
+    notifyListeners();
+
+    unawaited(LocalCache.writeMap(_cacheKey(year, month), {
+      'items': _transactions.map((t) => t.toMap()).toList(),
+      'hasMore': _hasMore,
+      'incomeCents': _incomeCents,
+      'expenseCents': _expenseCents,
+    }));
+  }
+
+  /// Loads the first page (50 items) + monthly totals + counts in a SINGLE HTTP request.
   /// Shows cached snapshot immediately if available.
-  Future<void> loadMonth(int year, int month, {bool silent = false}) async {
+  Future<void> loadMonth(
+    int year,
+    int month, {
+    bool silent = false,
+    bool force = false,
+  }) async {
     final monthChanged = year != _selectedYear || month != _selectedMonth;
     _selectedYear = year;
     _selectedMonth = month;
+
+    if (!force &&
+        !monthChanged &&
+        _hasLoadedOnce &&
+        _lastFetchedAt != null &&
+        DateTime.now().difference(_lastFetchedAt!) <
+            const Duration(seconds: 20)) {
+      return;
+    }
 
     if (monthChanged) {
       _transactions = [];
@@ -115,10 +197,14 @@ class FinanceProvider extends ChangeNotifier {
       }
     }
 
-    if (!silent) {
+    if (_isLoading && !monthChanged) return;
+    if (!silent && _transactions.isEmpty) {
       _isLoading = true;
       _error = null;
       notifyListeners();
+    } else {
+      _isLoading = true;
+      _error = null;
     }
 
     try {
@@ -132,7 +218,18 @@ class FinanceProvider extends ChangeNotifier {
       _transactions = page.items;
       _hasMore = page.hasMore;
       _hasLoadedOnce = true;
-      unawaited(refreshCounts());
+      _lastFetchedAt = DateTime.now();
+
+      if (page.counts != null) {
+        _counts = page.counts;
+        unawaited(LocalCache.writeMap('${_cacheKey(year, month)}_counts', {
+          'total': page.counts!.total,
+          'income': page.counts!.income,
+          'expense': page.counts!.expense,
+        }));
+      } else {
+        unawaited(refreshCounts());
+      }
 
       if (page.incomeCents != null && page.expenseCents != null) {
         _incomeCents = page.incomeCents!;
@@ -154,7 +251,6 @@ class FinanceProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-    if (_hasMore) unawaited(loadAll());
   }
 
   /// Refreshes real operation counts for the selected month from the server.
@@ -274,7 +370,7 @@ class FinanceProvider extends ChangeNotifier {
     await loadMonth(_selectedYear, _selectedMonth, silent: true);
   }
 
-  Future<void> reload() => loadMonth(_selectedYear, _selectedMonth);
+  Future<void> reload() => loadMonth(_selectedYear, _selectedMonth, force: true);
 
   void setTypeFilter(TransactionType? type) {
     _typeFilter = type;
@@ -284,16 +380,34 @@ class FinanceProvider extends ChangeNotifier {
   void setSearch(String query) {
     _searchQuery = query;
     notifyListeners();
+    if (query.trim().isNotEmpty && _hasMore) {
+      unawaited(loadAll());
+    }
   }
 
   Future<void> add(AppTransaction tx) async {
     await _repo.insert(tx);
-    await reload();
+    if (tx.date.year == _selectedYear && tx.date.month == _selectedMonth) {
+      _transactions = [tx, ..._transactions];
+      if (tx.type == TransactionType.income) {
+        _incomeCents += tx.amountCents;
+      } else {
+        _expenseCents += tx.amountCents;
+      }
+      notifyListeners();
+    }
+    unawaited(loadMonth(_selectedYear, _selectedMonth, silent: true, force: true));
   }
 
   Future<void> update(AppTransaction tx) async {
     await _repo.update(tx);
-    await reload();
+    final idx = _transactions.indexWhere((t) => t.id == tx.id);
+    if (idx != -1) {
+      _transactions[idx] = tx;
+      _recomputeLocalTotals();
+      notifyListeners();
+    }
+    unawaited(loadMonth(_selectedYear, _selectedMonth, silent: true, force: true));
   }
 
   Future<void> delete(String id) async {

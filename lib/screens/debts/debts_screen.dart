@@ -6,7 +6,10 @@ import 'package:uuid/uuid.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../models/debt.dart';
+import '../../models/order.dart';
+import '../../providers/customer_provider.dart';
 import '../../providers/debt_provider.dart';
+import '../../providers/order_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/financial_calculator.dart';
@@ -24,6 +27,41 @@ const double _kPagePadding = 20.0;
 
 enum _DebtFilter { all, active, overdue, paid }
 
+enum _DebtSourceFilter { all, orders, other }
+
+/// Unified item representing either a standalone [Debt] or an unpaid [Order].
+class _DebtEntry {
+  const _DebtEntry.debt(Debt this.debt) : order = null;
+  const _DebtEntry.order(Order this.order) : debt = null;
+
+  final Debt? debt;
+  final Order? order;
+
+  bool get isOrder => order != null;
+
+  String get id => order?.id ?? debt!.id;
+  String get personName => order?.customerName ?? debt!.personName;
+  String? get description => order?.title ?? debt!.description;
+  int get originalAmountCents =>
+      order?.totalPriceCents ?? debt!.originalAmountCents;
+  int get paidAmountCents => order?.receivedCents ?? debt!.paidAmountCents;
+  int get remainingCents => order?.remainingCents ?? debt!.remainingCents;
+  bool get isFullyPaid => order?.isFullyPaid ?? debt!.isFullyPaid;
+  DateTime get createdAt => order?.createdAt ?? debt!.createdAt;
+  DateTime? get dueDate => order?.dueDate ?? debt!.dueDate;
+
+  DebtStatus get computedStatus {
+    if (debt != null) return debt!.computedStatus;
+    final o = order!;
+    if (o.isFullyPaid) return DebtStatus.paid;
+    if (o.dueDate != null && DateTime.now().isAfter(o.dueDate!)) {
+      return DebtStatus.overdue;
+    }
+    if (o.receivedCents > 0) return DebtStatus.partiallyPaid;
+    return DebtStatus.unpaid;
+  }
+}
+
 class DebtsScreen extends StatefulWidget {
   const DebtsScreen({super.key});
 
@@ -35,6 +73,7 @@ class _DebtsScreenState extends State<DebtsScreen> {
   final _searchCtrl = TextEditingController();
   DebtDirection _direction = DebtDirection.receivable;
   _DebtFilter _statusFilter = _DebtFilter.all;
+  _DebtSourceFilter _sourceFilter = _DebtSourceFilter.all;
   bool _searchActive = false;
   String _searchQuery = '';
 
@@ -44,6 +83,10 @@ class _DebtsScreenState extends State<DebtsScreen> {
     _direction = context.read<DebtProvider>().selectedDirection;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DebtProvider>().load();
+      final op = context.read<OrderProvider>();
+      if (op.allOrders.isEmpty && !op.isLoading) {
+        op.load(silent: true);
+      }
     });
   }
 
@@ -55,7 +98,10 @@ class _DebtsScreenState extends State<DebtsScreen> {
 
   Future<void> _reload() async {
     HapticFeedback.mediumImpact();
-    await context.read<DebtProvider>().load();
+    await Future.wait([
+      context.read<DebtProvider>().load(force: true),
+      context.read<OrderProvider>().load(silent: true, force: true),
+    ]);
     if (mounted) {
       context.read<DashboardProvider>().reload();
     }
@@ -65,8 +111,7 @@ class _DebtsScreenState extends State<DebtsScreen> {
     HapticFeedback.lightImpact();
     await context.push(route);
     if (mounted) {
-      await context.read<DebtProvider>().load();
-      if (mounted) context.read<DashboardProvider>().reload();
+      context.read<DashboardProvider>().reload();
     }
   }
 
@@ -195,26 +240,131 @@ class _DebtsScreenState extends State<DebtsScreen> {
     );
   }
 
+  void _showOrderPaymentSheet(BuildContext context, Order order) {
+    HapticFeedback.lightImpact();
+    final colors = context.appColors;
+    final amountCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+    final currency = context.read<SettingsProvider>().currency;
+    final remainingCents = order.remainingCents;
+    final formattedRemaining =
+        FinancialCalculator.formatCents(remainingCents, currency: currency);
+
+    showAppModal(
+      context: context,
+      child: AppModalSheet(
+        title: context.tr('Оплата по заказу', 'Order payment'),
+        subtitle: context.tr(
+          '${order.customerName} · ${order.title} · $formattedRemaining',
+          '${order.customerName} · ${order.title} · $formattedRemaining',
+        ),
+        headerIcon: Icons.payments_outlined,
+        headerColor: colors.income,
+        bottomBar: FormSubmitButton(
+          label: context.tr('Зачислить оплату', 'Save payment'),
+          accentColor: colors.income,
+          isLoading: false,
+          icon: Icons.check_rounded,
+          onPressed: () async {
+            final cents =
+                FinancialCalculator.parseAmountToCents(amountCtrl.text);
+            if (cents == null || cents <= 0) return;
+            final orderProvider = context.read<OrderProvider>();
+            final customerProvider = context.read<CustomerProvider>();
+            final dashboardProvider = context.read<DashboardProvider>();
+            Navigator.of(context, rootNavigator: true).pop();
+            HapticFeedback.mediumImpact();
+            const uuid = Uuid();
+            await orderProvider.recordPayment(
+                  orderId: order.id,
+                  customerId: order.customerId,
+                  amountCents: cents.clamp(0, remainingCents),
+                  paymentId: uuid.v4(),
+                  transactionId: uuid.v4(),
+                  notes: notesCtrl.text.trim().isNotEmpty
+                      ? notesCtrl.text.trim()
+                      : null,
+                );
+            customerProvider.load(silent: true, force: true);
+            dashboardProvider.reload();
+          },
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          shrinkWrap: true,
+          children: [
+            SheetField(
+              label: context.tr('СУММА ПЛАТЕЖА', 'PAYMENT AMOUNT'),
+              required: true,
+              trailingLabel: GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  amountCtrl.text = remainingCents % 100 == 0
+                      ? (remainingCents ~/ 100).toString()
+                      : (remainingCents / 100).toStringAsFixed(2);
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: colors.income.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    context.tr('Весь остаток ($formattedRemaining)',
+                        'Full balance ($formattedRemaining)'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: colors.income,
+                    ),
+                  ),
+                ),
+              ),
+              child: FormAmountField(
+                controller: amountCtrl,
+                accentColor: colors.income,
+                prefix: '+',
+                currency: currency,
+                autofocus: true,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SheetField(
+              label: context.tr('ЗАМЕТКА К ПЛАТЕЖУ', 'PAYMENT NOTE'),
+              child: FormTextField(
+                controller: notesCtrl,
+                prefixIcon: Icons.notes_rounded,
+                hint: context.tr('Наличные, перевод на карту и т.д.',
+                    'Cash, card transfer, etc.'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   int _serverCount(DebtProvider p, DebtDirection d, String key, int fallback) {
     final v = p.countFor(d, key);
     return v >= 0 ? v : fallback;
   }
 
-  List<Debt> _applyFilters(List<Debt> source) {
-    final filtered = source.where((d) {
-      final st = d.computedStatus;
+  List<_DebtEntry> _applyFilters(List<_DebtEntry> source) {
+    final filtered = source.where((e) {
+      final st = e.computedStatus;
       final matchesStatus = switch (_statusFilter) {
         _DebtFilter.all => true,
-        _DebtFilter.active => !d.isFullyPaid,
+        _DebtFilter.active => !e.isFullyPaid,
         _DebtFilter.overdue => st == DebtStatus.overdue,
-        _DebtFilter.paid => d.isFullyPaid,
+        _DebtFilter.paid => e.isFullyPaid,
       };
       if (!matchesStatus) return false;
 
       if (_searchQuery.isNotEmpty) {
         final q = _searchQuery.toLowerCase();
-        final nameMatch = d.personName.toLowerCase().contains(q);
-        final descMatch = d.description?.toLowerCase().contains(q) ?? false;
+        final nameMatch = e.personName.toLowerCase().contains(q);
+        final descMatch = e.description?.toLowerCase().contains(q) ?? false;
         if (!nameMatch && !descMatch) return false;
       }
       return true;
@@ -239,14 +389,52 @@ class _DebtsScreenState extends State<DebtsScreen> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final provider = context.watch<DebtProvider>();
+    final orderProvider = context.watch<OrderProvider>();
     final currency = context.watch<SettingsProvider>().currency;
 
-    final allReceivables = provider.receivables;
-    final allPayables = provider.payables;
-    final directionList = _direction == DebtDirection.receivable
-        ? allReceivables
-        : allPayables;
-    final visibleDebts = _applyFilters(directionList);
+    final unpaidOrderEntries = orderProvider.allOrders
+        .where((o) => o.status != OrderStatus.cancelled && o.remainingCents > 0)
+        .map(_DebtEntry.order)
+        .toList();
+
+    final standaloneReceivables =
+        provider.receivables.map(_DebtEntry.debt).toList();
+    final allPayableEntries = provider.payables.map(_DebtEntry.debt).toList();
+
+    final int receivableStandaloneCount = _serverCount(
+      provider,
+      DebtDirection.receivable,
+      'all',
+      standaloneReceivables.length,
+    );
+    final int receivableTotalCount =
+        receivableStandaloneCount + unpaidOrderEntries.length;
+    final int payableTotalCount = _serverCount(
+      provider,
+      DebtDirection.payable,
+      'all',
+      allPayableEntries.length,
+    );
+
+    final List<_DebtEntry> directionEntries;
+    if (_direction == DebtDirection.receivable) {
+      directionEntries = switch (_sourceFilter) {
+        _DebtSourceFilter.all => [
+            ...unpaidOrderEntries,
+            ...standaloneReceivables,
+          ],
+        _DebtSourceFilter.orders => unpaidOrderEntries,
+        _DebtSourceFilter.other => standaloneReceivables,
+      };
+    } else {
+      directionEntries = allPayableEntries;
+    }
+
+    final visibleEntries = _applyFilters(directionEntries);
+    final bool hasActiveFilter = _searchQuery.isNotEmpty ||
+        _statusFilter != _DebtFilter.all ||
+        (_direction == DebtDirection.receivable &&
+            _sourceFilter != _DebtSourceFilter.all);
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -263,7 +451,7 @@ class _DebtsScreenState extends State<DebtsScreen> {
                 0,
               ),
               child: _DebtsTopBar(
-                totalCount: provider.totalCount,
+                totalCount: receivableTotalCount + payableTotalCount,
                 searchActive: _searchActive,
                 searchController: _searchCtrl,
                 onBack: () {
@@ -301,20 +489,42 @@ class _DebtsScreenState extends State<DebtsScreen> {
               ),
               child: _DirectionSegmentedBar(
                 selected: _direction,
-                receivableCount: _serverCount(provider, DebtDirection.receivable, 'all', allReceivables.length),
-                payableCount: _serverCount(provider, DebtDirection.payable, 'all', allPayables.length),
+                receivableCount: receivableTotalCount,
+                payableCount: payableTotalCount,
                 onChanged: (dir) {
                   HapticFeedback.selectionClick();
                   context.read<DebtProvider>().setSelectedDirection(dir);
                   setState(() {
                     _direction = dir;
                     _statusFilter = _DebtFilter.all;
+                    _sourceFilter = _DebtSourceFilter.all;
                   });
                 },
               ),
             ),
 
-            // ── 3. Pinned Status Filter Strip ─────────────────────────────
+            // ── 3. Compact Source Category Bar (Все / Заказы / Прочие) ────
+            if (_direction == DebtDirection.receivable)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  _kPagePadding,
+                  AppSpacing.sm,
+                  _kPagePadding,
+                  0,
+                ),
+                child: _DebtSourceStrip(
+                  selected: _sourceFilter,
+                  allCount: receivableTotalCount,
+                  ordersCount: unpaidOrderEntries.length,
+                  otherCount: receivableStandaloneCount,
+                  onSelect: (f) {
+                    HapticFeedback.selectionClick();
+                    setState(() => _sourceFilter = f);
+                  },
+                ),
+              ),
+
+            // ── 4. Pinned Status Filter Strip ─────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 0,
@@ -323,11 +533,14 @@ class _DebtsScreenState extends State<DebtsScreen> {
                 AppSpacing.xs,
               ),
               child: _DebtStatusFilterStrip(
-                sourceDebts: directionList,
-                serverCounts: {
-                  for (final f in _DebtFilter.values)
-                    f: provider.countFor(_direction, f.name),
-                },
+                sourceEntries: directionEntries,
+                serverCounts: (_direction == DebtDirection.payable ||
+                        _sourceFilter == _DebtSourceFilter.other)
+                    ? {
+                        for (final f in _DebtFilter.values)
+                          f: provider.countFor(_direction, f.name),
+                      }
+                    : const {},
                 selected: _statusFilter,
                 isReceivable: _direction == DebtDirection.receivable,
                 onSelect: (f) {
@@ -386,7 +599,7 @@ class _DebtsScreenState extends State<DebtsScreen> {
                             slivers: [
 
               // ── 5. Debts List / Empty State ───────────────────────────────
-              if (visibleDebts.isEmpty)
+              if (visibleEntries.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Padding(
@@ -396,16 +609,14 @@ class _DebtsScreenState extends State<DebtsScreen> {
                     ),
                     child: AppEmptyState(
                       icon: Icons.account_balance_wallet_outlined,
-                      title: _searchQuery.isNotEmpty ||
-                              _statusFilter != _DebtFilter.all
+                      title: hasActiveFilter
                           ? context.tr('Записи не найдены', 'No records found')
                           : (_direction == DebtDirection.receivable
                               ? context.tr(
                                   'Никто вам не должен', 'Nobody owes you')
                               : context.tr(
                                   'Вы никому не должны', 'You owe nobody')),
-                      subtitle: _searchQuery.isNotEmpty ||
-                              _statusFilter != _DebtFilter.all
+                      subtitle: hasActiveFilter
                           ? context.tr(
                               'Попробуйте выбрать другой фильтр или изменить поисковый запрос',
                               'Try another filter or search query')
@@ -416,17 +627,16 @@ class _DebtsScreenState extends State<DebtsScreen> {
                               : context.tr(
                                   'Добавьте запись о средствах, которые должны выплатить вы',
                                   'Add a record of money you owe')),
-                      actionLabel: _searchQuery.isNotEmpty ||
-                              _statusFilter != _DebtFilter.all
+                      actionLabel: hasActiveFilter
                           ? context.tr('Сбросить фильтры', 'Reset filters')
                           : context.tr('Добавить долг', 'Add debt'),
                       onAction: () {
-                        if (_searchQuery.isNotEmpty ||
-                            _statusFilter != _DebtFilter.all) {
+                        if (hasActiveFilter) {
                           setState(() {
                             _searchCtrl.clear();
                             _searchQuery = '';
                             _statusFilter = _DebtFilter.all;
+                            _sourceFilter = _DebtSourceFilter.all;
                             _searchActive = false;
                           });
                         } else {
@@ -449,32 +659,50 @@ class _DebtsScreenState extends State<DebtsScreen> {
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (ctx, i) {
-                        final debt = visibleDebts[i];
+                        final entry = visibleEntries[i];
                         return RepaintBoundary(
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: _ModernDebtCard(
-                              debt: debt,
+                              entry: entry,
                               currency: currency,
                               onTap: () async {
                                 HapticFeedback.selectionClick();
-                                await context.push('/profile/debts/${debt.id}');
-                                if (mounted) {
-                                  context.read<DebtProvider>().load();
-                                  context.read<DashboardProvider>().reload();
+                                final op = context.read<OrderProvider>();
+                                final dp = context.read<DebtProvider>();
+                                final dash = context.read<DashboardProvider>();
+                                if (entry.isOrder) {
+                                  await context.push('/orders/${entry.id}');
+                                  op.load(silent: true, force: true);
+                                  dash.reload();
+                                } else {
+                                  await context.push('/profile/debts/${entry.id}');
+                                  dp.load(force: true);
+                                  dash.reload();
                                 }
                               },
-                              onPay: debt.isFullyPaid
+                              onPay: entry.isFullyPaid
                                   ? null
-                                  : () => _showPaymentSheet(context, debt),
-                              onEdit: () =>
-                                  _openForm('/profile/debts/${debt.id}/edit'),
-                              onDelete: () => _confirmDelete(context, debt),
+                                  : () {
+                                      if (entry.isOrder) {
+                                        _showOrderPaymentSheet(
+                                            context, entry.order!);
+                                      } else {
+                                        _showPaymentSheet(
+                                            context, entry.debt!);
+                                      }
+                                    },
+                              onEdit: () => entry.isOrder
+                                  ? _openForm('/orders/${entry.id}/edit')
+                                  : _openForm('/profile/debts/${entry.id}/edit'),
+                              onDelete: entry.isOrder
+                                  ? null
+                                  : () => _confirmDelete(context, entry.debt!),
                             ),
                           ),
                         );
                       },
-                      childCount: visibleDebts.length,
+                      childCount: visibleEntries.length,
                     ),
                   ),
                 ),
@@ -870,18 +1098,138 @@ class _DirectionTabItem extends StatelessWidget {
   }
 }
 
-// ─── 3. Status Filter Strip ──────────────────────────────────────────────────
+// ─── 3. Compact Source Category Strip ────────────────────────────────────────
+
+class _DebtSourceStrip extends StatelessWidget {
+  const _DebtSourceStrip({
+    required this.selected,
+    required this.allCount,
+    required this.ordersCount,
+    required this.otherCount,
+    required this.onSelect,
+  });
+
+  final _DebtSourceFilter selected;
+  final int allCount;
+  final int ordersCount;
+  final int otherCount;
+  final ValueChanged<_DebtSourceFilter> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final items = <({
+      _DebtSourceFilter filter,
+      String label,
+      int count,
+      IconData icon,
+    })>[
+      (
+        filter: _DebtSourceFilter.all,
+        label: context.tr('Все', 'All'),
+        count: allCount,
+        icon: Icons.layers_outlined,
+      ),
+      (
+        filter: _DebtSourceFilter.orders,
+        label: context.tr('Заказы', 'Orders'),
+        count: ordersCount,
+        icon: Icons.receipt_long_outlined,
+      ),
+      (
+        filter: _DebtSourceFilter.other,
+        label: context.tr('Прочие', 'Other'),
+        count: otherCount,
+        icon: Icons.account_balance_wallet_outlined,
+      ),
+    ];
+
+    return Row(
+      children: [
+        for (int i = 0; i < items.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => onSelect(items[i].filter),
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                height: 34,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: selected == items[i].filter
+                      ? colors.primary.withValues(alpha: 0.12)
+                      : colors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: selected == items[i].filter
+                        ? colors.primary
+                        : colors.border,
+                    width: selected == items[i].filter ? 1.4 : 1.0,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      items[i].icon,
+                      size: 13,
+                      color: selected == items[i].filter
+                          ? colors.primary
+                          : colors.textMuted,
+                    ),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        items[i].label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: selected == items[i].filter
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          color: selected == items[i].filter
+                              ? colors.primary
+                              : colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${items[i].count}',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: selected == items[i].filter
+                            ? colors.primary
+                            : colors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ─── 4. Status Filter Strip ──────────────────────────────────────────────────
 
 class _DebtStatusFilterStrip extends StatelessWidget {
   const _DebtStatusFilterStrip({
-    required this.sourceDebts,
+    required this.sourceEntries,
     required this.serverCounts,
     required this.selected,
     required this.isReceivable,
     required this.onSelect,
   });
 
-  final List<Debt> sourceDebts;
+  final List<_DebtEntry> sourceEntries;
   final Map<_DebtFilter, int> serverCounts;
   final _DebtFilter selected;
   final bool isReceivable;
@@ -890,12 +1238,12 @@ class _DebtStatusFilterStrip extends StatelessWidget {
   int _countFor(_DebtFilter filter) {
     final server = serverCounts[filter] ?? -1;
     if (server >= 0) return server;
-    return sourceDebts.where((d) {
+    return sourceEntries.where((e) {
       return switch (filter) {
         _DebtFilter.all => true,
-        _DebtFilter.active => !d.isFullyPaid,
-        _DebtFilter.overdue => d.computedStatus == DebtStatus.overdue,
-        _DebtFilter.paid => d.isFullyPaid,
+        _DebtFilter.active => !e.isFullyPaid,
+        _DebtFilter.overdue => e.computedStatus == DebtStatus.overdue,
+        _DebtFilter.paid => e.isFullyPaid,
       };
     }).length;
   }
@@ -1022,31 +1370,32 @@ class _DebtStatusFilterStrip extends StatelessWidget {
 
 class _ModernDebtCard extends StatelessWidget {
   const _ModernDebtCard({
-    required this.debt,
+    required this.entry,
     required this.currency,
     required this.onTap,
     required this.onPay,
     required this.onEdit,
-    required this.onDelete,
+    this.onDelete,
   });
 
-  final Debt debt;
+  final _DebtEntry entry;
   final String currency;
   final VoidCallback onTap;
   final VoidCallback? onPay;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final isReceivable = debt.direction == DebtDirection.receivable;
-    final status = debt.computedStatus;
-    final isPaid = debt.isFullyPaid;
+    final isReceivable =
+        entry.isOrder || entry.debt!.direction == DebtDirection.receivable;
+    final status = entry.computedStatus;
+    final isPaid = entry.isFullyPaid;
     final isOverdue = status == DebtStatus.overdue;
 
-    final progress = debt.originalAmountCents > 0
-        ? (debt.paidAmountCents / debt.originalAmountCents).clamp(0.0, 1.0)
+    final progress = entry.originalAmountCents > 0
+        ? (entry.paidAmountCents / entry.originalAmountCents).clamp(0.0, 1.0)
         : 0.0;
 
     final avatarColor = isPaid
@@ -1061,11 +1410,11 @@ class _ModernDebtCard extends StatelessWidget {
 
     // Subtitle combines description and due date cleanly on 1 line
     final subtitleParts = <String>[
-      if (debt.description != null && debt.description!.trim().isNotEmpty)
-        debt.description!.trim(),
-      if (!isPaid && debt.dueDate != null)
-        context.tr('до ${DateHelper.formatShortDate(debt.dueDate!)}',
-            'due ${DateHelper.formatShortDate(debt.dueDate!)}'),
+      if (entry.description != null && entry.description!.trim().isNotEmpty)
+        entry.description!.trim(),
+      if (!isPaid && entry.dueDate != null)
+        context.tr('до ${DateHelper.formatShortDate(entry.dueDate!)}',
+            'due ${DateHelper.formatShortDate(entry.dueDate!)}'),
     ];
 
     return AppCard(
@@ -1087,8 +1436,8 @@ class _ModernDebtCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(11),
                   ),
                   child: Text(
-                    debt.personName.trim().isNotEmpty
-                        ? debt.personName.trim()[0].toUpperCase()
+                    entry.personName.trim().isNotEmpty
+                        ? entry.personName.trim()[0].toUpperCase()
                         : '?',
                     style: const TextStyle(
                       fontSize: 15,
@@ -1102,16 +1451,43 @@ class _ModernDebtCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        debt.personName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.2,
-                          color: colors.textPrimary,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              entry.personName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (entry.isOrder) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colors.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                context.tr('Заказ', 'Order'),
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       if (subtitleParts.isNotEmpty) ...[
                         const SizedBox(height: 2),
@@ -1139,8 +1515,8 @@ class _ModernDebtCard extends StatelessWidget {
                     Text(
                       FinancialCalculator.formatCents(
                         isPaid
-                            ? debt.originalAmountCents
-                            : debt.remainingCents,
+                            ? entry.originalAmountCents
+                            : entry.remainingCents,
                         currency: currency,
                       ),
                       style: TextStyle(
@@ -1181,8 +1557,8 @@ class _ModernDebtCard extends StatelessWidget {
                     isPaid
                         ? context.tr('Погашен полностью', 'Fully paid')
                         : context.tr(
-                            'Выплачено: ${FinancialCalculator.formatCents(debt.paidAmountCents, currency: currency)}',
-                            'Paid: ${FinancialCalculator.formatCents(debt.paidAmountCents, currency: currency)}'),
+                            'Выплачено: ${FinancialCalculator.formatCents(entry.paidAmountCents, currency: currency)}',
+                            'Paid: ${FinancialCalculator.formatCents(entry.paidAmountCents, currency: currency)}'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1234,13 +1610,15 @@ class _ModernDebtCard extends StatelessWidget {
                   bgColor: colors.surfaceSecondary,
                   onTap: onEdit,
                 ),
-                const SizedBox(width: 6),
-                _CardIconBtn(
-                  icon: Icons.delete_outline_rounded,
-                  color: colors.expense,
-                  bgColor: colors.expenseBackground,
-                  onTap: onDelete,
-                ),
+                if (onDelete != null) ...[
+                  const SizedBox(width: 6),
+                  _CardIconBtn(
+                    icon: Icons.delete_outline_rounded,
+                    color: colors.expense,
+                    bgColor: colors.expenseBackground,
+                    onTap: onDelete!,
+                  ),
+                ],
               ],
             ),
           ],

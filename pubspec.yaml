@@ -46,6 +46,14 @@ dependencies:
   # Typography
   google_fonts: ^6.2.1
 
+  # Voice notes (Speech-to-Text audio capture)
+  record: ^6.1.2
+  path_provider: ^2.1.5
+
+  # Local notifications & timezone scheduling
+  flutter_local_notifications: ^19.5.0
+  timezone: ^0.10.0
+
   # Haptics (uses Flutter's built-in HapticFeedback)
   # No extra package needed — HapticFeedback is in flutter/services.dart
 

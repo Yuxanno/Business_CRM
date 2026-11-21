@@ -36,17 +36,28 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
   @override
   void initState() {
     super.initState();
+    final cached = context
+        .read<DebtProvider>()
+        .all
+        .where((d) => d.id == widget.debtId)
+        .firstOrNull;
+    if (cached != null) {
+      _debt = cached;
+      _loading = false;
+    }
     _load();
   }
 
   Future<void> _load() async {
     final provider = context.read<DebtProvider>();
-    final debt = await provider.getById(widget.debtId);
-    final payments = await provider.getPaymentsForDebt(widget.debtId);
+    final results = await Future.wait([
+      provider.getById(widget.debtId),
+      provider.getPaymentsForDebt(widget.debtId),
+    ]);
     if (mounted) {
       setState(() {
-        _debt = debt;
-        _payments = payments;
+        _debt = (results[0] as Debt?) ?? _debt;
+        _payments = results[1] as List<DebtPayment>;
         _loading = false;
       });
     }

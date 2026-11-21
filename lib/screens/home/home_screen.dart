@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../services/notification_service.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -6,14 +8,11 @@ import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../providers/dashboard_provider.dart';
-import '../../providers/finance_provider.dart';
-import '../../providers/order_provider.dart';
-import '../../providers/customer_provider.dart';
-import '../../providers/debt_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/transaction.dart';
 import '../../services/financial_calculator.dart';
 import '../../services/date_helper.dart';
+import '../../services/bootstrap_service.dart';
 import '../../components/app_card.dart';
 import '../../components/app_empty_state.dart';
 import '../../components/finance_bar_chart.dart';
@@ -51,23 +50,11 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _loadHomeAndPrefetch() async {
     if (!mounted) return;
-    final dashboard = context.read<DashboardProvider>();
-    final finance = context.read<FinanceProvider>();
-    final orders = context.read<OrderProvider>();
-    final customers = context.read<CustomerProvider>();
-    final debts = context.read<DebtProvider>();
-
-    // Priority 1: load only the visible Home screen data first
-    await dashboard.load();
-    if (!mounted) return;
-
-    // Priority 2: prefetch page 1 of the other tabs in parallel
-    await Future.wait([
-      finance.prefetchIfNeeded(),
-      orders.prefetchIfNeeded(),
-      customers.prefetchIfNeeded(),
-      debts.prefetchIfNeeded(),
-    ]);
+    // Single batched request loads user + dashboard + page 1 of all 4 tabs at once
+    await BootstrapService.loadAll(context);
+    if (mounted) {
+      await NotificationService.instance.promptPermissionIfNeeded(context);
+    }
   }
 
   @override
@@ -775,18 +762,36 @@ class _Header extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.calendar_month_rounded,
-                        size: 14,
-                        color: colors.primary,
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: dashboard.isRefreshing
+                            ? SizedBox(
+                                key: const ValueKey('month-loading'),
+                                width: 13,
+                                height: 13,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colors.primary,
+                                ),
+                              )
+                            : Icon(
+                                Icons.calendar_month_rounded,
+                                key: const ValueKey('month-icon'),
+                                size: 14,
+                                color: colors.primary,
+                              ),
                       ),
                       const SizedBox(width: 5),
-                      Text(
-                        DateHelper.formatMonthYear(selectedDate),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: colors.textPrimary,
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: Text(
+                          DateHelper.formatMonthYear(selectedDate),
+                          key: ValueKey('${dashboard.year}-${dashboard.month}'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
                         ),
                       ),
                     ],
@@ -1033,13 +1038,19 @@ class _HeroFinancialCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: CustomPaint(
-          painter: const _HeroDecorPainter(),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        child: Stack(
+          children: [
+            CustomPaint(
+              painter: const _HeroDecorPainter(),
+              child: AnimatedOpacity(
+                opacity: dashboard.isRefreshing ? 0.65 : 1.0,
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                 // Top status & privacy row
                 Row(
                   children: [
@@ -1224,6 +1235,22 @@ class _HeroFinancialCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+            ),
+            if (dashboard.isRefreshing)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(
+                  minHeight: 2.5,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Color(0xFF34D399),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

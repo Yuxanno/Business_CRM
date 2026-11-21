@@ -2,15 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/order.dart';
 import '../repositories/order_repository.dart';
-import '../repositories/customer_repository.dart';
 import '../services/local_cache.dart';
+import '../services/notification_service.dart';
 
 class OrderProvider extends ChangeNotifier {
-  static const int pageSize = 25;
+  static const int pageSize = 50;
   static const _cacheKey = 'orders_page1';
 
   final _orderRepo = OrderRepository();
-  final _customerRepo = CustomerRepository();
 
   List<Order> _orders = [];
   OrderStatus? _statusFilter;
@@ -19,6 +18,7 @@ class OrderProvider extends ChangeNotifier {
   bool _isLoadingMore = false;
   bool _hasMore = false;
   bool _hasLoadedOnce = false;
+  DateTime? _lastFetchedAt;
   String? _error;
 
   List<Order> get allOrders => _orders;
@@ -71,7 +71,50 @@ class OrderProvider extends ChangeNotifier {
     return debt;
   }
 
-  Future<void> load({bool silent = false}) async {
+  Future<void> hydrateFromCache() async {
+    _counts ??= await LocalCache.readMap('${_cacheKey}_counts');
+    final cached = await LocalCache.readMap(_cacheKey);
+    if (cached != null) {
+      final rawItems = (cached['items'] as List?) ?? const [];
+      _orders = rawItems
+          .map((e) => Order.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+      _hasMore = cached['hasMore'] == true;
+      _hasLoadedOnce = true;
+    }
+  }
+
+  void applyBootstrapPayload(Map<String, dynamic> json) {
+    final rawItems = (json['items'] as List?) ?? const [];
+    _orders = rawItems
+        .map((e) => Order.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    _hasMore = json['hasMore'] == true;
+    _hasLoadedOnce = true;
+    _isLoading = false;
+    _lastFetchedAt = DateTime.now();
+
+    final rawCounts = json['counts'];
+    if (rawCounts is Map) {
+      _counts = Map<String, dynamic>.from(rawCounts);
+      unawaited(LocalCache.writeMap('${_cacheKey}_counts', _counts!));
+    }
+    notifyListeners();
+    unawaited(LocalCache.writeMap(_cacheKey, {
+      'items': _orders.map((o) => o.toMap()).toList(),
+      'hasMore': _hasMore,
+    }));
+  }
+
+  Future<void> load({bool silent = false, bool force = false}) async {
+    if (!force &&
+        _hasLoadedOnce &&
+        _lastFetchedAt != null &&
+        DateTime.now().difference(_lastFetchedAt!) <
+            const Duration(seconds: 20)) {
+      return;
+    }
+
     if (_orders.isEmpty) {
       _counts ??= await LocalCache.readMap('${_cacheKey}_counts');
       final cached = await LocalCache.readMap(_cacheKey);
@@ -85,10 +128,14 @@ class OrderProvider extends ChangeNotifier {
       }
     }
 
-    if (!silent) {
+    if (_isLoading) return;
+    if (!silent && _orders.isEmpty) {
       _isLoading = true;
       _error = null;
       notifyListeners();
+    } else {
+      _isLoading = true;
+      _error = null;
     }
 
     try {
@@ -96,19 +143,20 @@ class OrderProvider extends ChangeNotifier {
       _orders = page.items;
       _hasMore = page.hasMore;
       _hasLoadedOnce = true;
+      _lastFetchedAt = DateTime.now();
       unawaited(refreshCounts());
 
       unawaited(LocalCache.writeMap(_cacheKey, {
         'items': _orders.map((o) => o.toMap()).toList(),
         'hasMore': _hasMore,
       }));
+      unawaited(NotificationService.instance.updateOrders(_orders));
     } catch (e) {
       _error = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
     }
-    if (_hasMore) unawaited(loadAll());
   }
 
   /// Refreshes real totals from the server.
@@ -169,6 +217,9 @@ class OrderProvider extends ChangeNotifier {
   void setSearch(String query) {
     _searchQuery = query;
     notifyListeners();
+    if (query.trim().isNotEmpty && _hasMore) {
+      unawaited(loadAll());
+    }
   }
 
   Future<Order?> getById(String id) => _orderRepo.getById(id);
@@ -178,8 +229,10 @@ class OrderProvider extends ChangeNotifier {
 
   Future<void> add(Order order) async {
     await _orderRepo.insert(order);
-    await _customerRepo.addOrder(order.customerId, order.totalPriceCents);
-    await load();
+    _orders = [order, ..._orders];
+    notifyListeners();
+    unawaited(NotificationService.instance.updateOrders(_orders));
+    unawaited(load(silent: true, force: true));
   }
 
   Future<void> update(Order order) async {
@@ -188,18 +241,16 @@ class OrderProvider extends ChangeNotifier {
     if (idx != -1) {
       _orders[idx] = order;
       notifyListeners();
+      unawaited(NotificationService.instance.updateOrders(_orders));
     }
     unawaited(refreshCounts());
   }
 
   Future<void> delete(String id) async {
-    final order = _orders.firstWhere((o) => o.id == id,
-        orElse: () => throw Exception('Order not found'));
     await _orderRepo.delete(id);
-    await _customerRepo.removeOrder(
-        order.customerId, order.totalPriceCents, order.receivedCents);
     _orders.removeWhere((o) => o.id == id);
     notifyListeners();
+    unawaited(NotificationService.instance.updateOrders(_orders));
     unawaited(refreshCounts());
   }
 
@@ -232,6 +283,7 @@ class OrderProvider extends ChangeNotifier {
         _orders.insert(0, updated);
       }
       notifyListeners();
+      unawaited(NotificationService.instance.updateOrders(_orders));
     }
     unawaited(refreshCounts());
   }

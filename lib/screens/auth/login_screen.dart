@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../components/app_modal_sheet.dart';
@@ -14,6 +11,7 @@ import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/api_client.dart';
+import '../../services/notification_service.dart';
 import '../profile/account_store.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -26,7 +24,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _loginCtrl = TextEditingController();
@@ -35,8 +33,11 @@ class _LoginScreenState extends State<LoginScreen>
   final _businessNameCtrl = TextEditingController();
 
   late final AnimationController _modeCtrl;
+  late final AnimationController _enterCtrl;
   late final Animation<double> _modeCurve;
   late final Animation<double> _fieldFade;
+  late final Animation<double> _enterFade;
+  late final Animation<Offset> _enterSlide;
 
   late bool _isRegister;
   int _registerStep = 0;
@@ -46,6 +47,7 @@ class _LoginScreenState extends State<LoginScreen>
   String? _passwordError;
   String? _confirmError;
   var _isLoading = false;
+  var _authSuccess = false;
 
   @override
   void initState() {
@@ -56,6 +58,21 @@ class _LoginScreenState extends State<LoginScreen>
       duration: const Duration(milliseconds: 260),
       value: _isRegister ? 1.0 : 0.0,
     );
+    _enterCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    )..forward();
+    _enterFade = CurvedAnimation(
+      parent: _enterCtrl,
+      curve: Curves.easeOutCubic,
+    );
+    _enterSlide = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _enterCtrl,
+      curve: Curves.easeOutCubic,
+    ));
     _modeCurve = CurvedAnimation(
       parent: _modeCtrl,
       curve: Curves.easeInOutCubic,
@@ -64,10 +81,18 @@ class _LoginScreenState extends State<LoginScreen>
       parent: _modeCtrl,
       curve: const Interval(0.22, 1.0, curve: Curves.easeOut),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 900), () {
+        if (mounted) {
+          NotificationService.instance.promptPermissionIfNeeded(context);
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
+    _enterCtrl.dispose();
     _modeCtrl.dispose();
     _nameCtrl.dispose();
     _loginCtrl.dispose();
@@ -183,75 +208,65 @@ class _LoginScreenState extends State<LoginScreen>
               'password': _passwordCtrl.text,
             };
 
-      final response = await http.post(
-        Uri.parse('http://localhost:3001$endpoint'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
+      final raw = await ApiClient.instance.post(endpoint, body);
+      final json = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : <String, dynamic>{};
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = (json['token'] ?? '').toString();
+      await prefs.setString('authToken', token);
+      ApiClient.instance.setToken(token);
+      await AccountStore.remember(
+        name: (json['name'] ?? '').toString(),
+        login: (json['username'] ?? '').toString(),
+      );
+      if (!mounted) return;
+
+      final business = (_isRegister
+              ? _businessNameCtrl.text.trim()
+              : (json['businessName'] ?? '').toString())
+          .trim();
+      final currency = (_isRegister
+              ? _currency
+              : (json['currency'] ?? 'UZS').toString())
+          .trim();
+      final settings = context.read<SettingsProvider>();
+      final locale = (json['locale'] ?? settings.locale).toString();
+
+      await settings.update(
+        settings.settings.copyWith(
+          businessName: business,
+          ownerName: (json['name'] ?? '').toString(),
+          currency: currency,
+          locale: locale,
+          isOnboardingDone: true,
+        ),
       );
 
-      final okCode = _isRegister ? 201 : 200;
-      if (response.statusCode == okCode) {
-        final json = jsonDecode(response.body);
-        final prefs = await SharedPreferences.getInstance();
-        final token = json['token'].toString();
-        await prefs.setString('authToken', token);
-        ApiClient.instance.setToken(token);
-        await AccountStore.remember(
-          name: (json['name'] ?? '').toString(),
-          login: (json['username'] ?? '').toString(),
-        );
-        if (!mounted) return;
-
-        var business = (json['businessName'] ?? '').toString();
-        var currency = (json['currency'] ?? 'RUB').toString();
-        final settings = context.read<SettingsProvider>();
-        var locale = (json['locale'] ?? settings.locale).toString();
-
-        if (_isRegister) {
-          final enteredBusiness = _businessNameCtrl.text.trim();
-          final needsProfileSync =
-              business != enteredBusiness ||
-              currency != _currency ||
-              locale != selectedLocale;
-          if (needsProfileSync) {
-            await ApiClient.instance.put('/api/auth/profile', {
-              'name': _nameCtrl.text.trim(),
-              'username': _loginCtrl.text.trim(),
-              'businessName': enteredBusiness,
-              'currency': _currency,
-              'locale': selectedLocale,
-            });
-            business = enteredBusiness;
-            currency = _currency;
-            locale = selectedLocale;
-          }
-        }
-
-        await settings.update(
-          settings.settings.copyWith(
-            businessName: business,
-            ownerName: (json['name'] ?? '').toString(),
-            currency: currency,
-            locale: locale,
-            isOnboardingDone: true,
-          ),
-        );
-
-        HapticFeedback.mediumImpact();
-        if (mounted) context.go('/home');
-      } else {
-        final json = jsonDecode(response.body);
-        if (mounted) {
-          _showError(
-            json['error'] ??
-                (_isRegister
-                    ? context.tr('Ошибка регистрации', 'Registration error')
-                    : context.tr('Ошибка входа', 'Sign in error')),
-          );
-        }
+      HapticFeedback.mediumImpact();
+      if (mounted) {
+        setState(() {
+          _authSuccess = true;
+          _isLoading = false;
+        });
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 560));
+      if (mounted) context.go('/home');
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _authSuccess = false;
+        });
+        _showError(e.message);
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _authSuccess = false;
+        });
         _showError(
           context.tr(
             'Не удалось подключиться к серверу',
@@ -259,8 +274,6 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -290,8 +303,12 @@ class _LoginScreenState extends State<LoginScreen>
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(20, topPad, 20, 32),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
+                child: FadeTransition(
+                  opacity: _enterFade,
+                  child: SlideTransition(
+                    position: _enterSlide,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -547,6 +564,8 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
       ),
+            ),
+          ),
             Positioned(
               top: 12,
               right: 16,
@@ -560,6 +579,11 @@ class _LoginScreenState extends State<LoginScreen>
                 },
               ),
             ),
+            if (_isLoading || _authSuccess)
+              _AuthTransitionOverlay(
+                isRegister: _isRegister,
+                isSuccess: _authSuccess,
+              ),
           ],
         ),
       ),
@@ -1078,6 +1102,151 @@ class _SignatureAuthButtonState extends State<_SignatureAuthButton> {
                     ),
                   ],
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthTransitionOverlay extends StatelessWidget {
+  const _AuthTransitionOverlay({
+    required this.isRegister,
+    required this.isSuccess,
+  });
+
+  final bool isRegister;
+  final bool isSuccess;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final label = isSuccess
+        ? (isRegister
+            ? context.tr('Аккаунт создан!', 'Account created!')
+            : context.tr('Добро пожаловать!', 'Welcome back!'))
+        : (isRegister
+            ? context.tr('Создаём аккаунт...', 'Creating account...')
+            : context.tr('Вход в BizFlow...', 'Signing in...'));
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      builder: (context, fade, child) => Opacity(
+        opacity: fade,
+        child: child,
+      ),
+      child: Positioned.fill(
+        child: ColoredBox(
+          color: colors.background.withValues(alpha: 0.88),
+          child: Center(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0.92, end: 1.0),
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutBack,
+              builder: (context, scale, child) => Transform.scale(
+                scale: scale,
+                child: child,
+              ),
+              child: Container(
+                width: 240,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 26,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: colors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ink.withValues(alpha: 0.08),
+                      blurRadius: 28,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 280),
+                      switchInCurve: Curves.easeOutBack,
+                      transitionBuilder: (child, anim) => ScaleTransition(
+                        scale: anim,
+                        child: FadeTransition(opacity: anim, child: child),
+                      ),
+                      child: isSuccess
+                          ? Container(
+                              key: const ValueKey('auth-ok'),
+                              width: 62,
+                              height: 62,
+                              decoration: BoxDecoration(
+                                color: colors.income,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: colors.income.withValues(alpha: 0.3),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.check_rounded,
+                                size: 32,
+                                color: Colors.white,
+                              ),
+                            )
+                          : SizedBox(
+                              key: const ValueKey('auth-loading'),
+                              width: 62,
+                              height: 62,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 62,
+                                    height: 62,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 3,
+                                      color: colors.primary,
+                                      backgroundColor: colors.border,
+                                    ),
+                                  ),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: Image.asset(
+                                      'assets/images/logo.png',
+                                      width: 42,
+                                      height: 42,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Text(
+                        label,
+                        key: ValueKey(label),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: colors.textPrimary,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

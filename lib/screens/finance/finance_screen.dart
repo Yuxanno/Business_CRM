@@ -86,8 +86,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
     HapticFeedback.lightImpact();
     await context.push(route);
     if (mounted) {
-      await context.read<FinanceProvider>().reload();
-      if (mounted) context.read<DashboardProvider>().reload();
+      context.read<DashboardProvider>().reload();
     }
   }
 

@@ -399,6 +399,7 @@ class FormTextField extends StatefulWidget {
     super.key,
     required this.controller,
     required this.hint,
+    this.minLines,
     this.maxLines = 1,
     this.keyboardType,
     this.inputFormatters,
@@ -407,6 +408,7 @@ class FormTextField extends StatefulWidget {
     this.autofocus = false,
     this.obscureText = false,
     this.prefixIcon,
+    this.trailing,
     this.textInputAction,
     this.focusNode,
     this.onFieldSubmitted,
@@ -414,6 +416,7 @@ class FormTextField extends StatefulWidget {
 
   final TextEditingController controller;
   final String hint;
+  final int? minLines;
   final int maxLines;
   final TextInputType? keyboardType;
   final List<TextInputFormatter>? inputFormatters;
@@ -422,6 +425,7 @@ class FormTextField extends StatefulWidget {
   final bool autofocus;
   final bool obscureText;
   final IconData? prefixIcon;
+  final Widget? trailing;
   final TextInputAction? textInputAction;
   final FocusNode? focusNode;
   final ValueChanged<String>? onFieldSubmitted;
@@ -443,7 +447,9 @@ class _FormTextFieldState extends State<FormTextField> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final isMultiline = !widget.obscureText && widget.maxLines > 1;
+    final isMultiline = !widget.obscureText &&
+        (widget.maxLines > 1 ||
+            (widget.minLines != null && widget.minLines! > 1));
 
     return FormField<String>(
       initialValue: widget.controller.text,
@@ -504,6 +510,7 @@ class _FormTextFieldState extends State<FormTextField> {
                       child: TextField(
                         controller: widget.controller,
                         focusNode: widget.focusNode,
+                        minLines: widget.obscureText ? 1 : widget.minLines,
                         maxLines: widget.obscureText ? 1 : widget.maxLines,
                         obscureText: _obscured,
                         keyboardType: widget.keyboardType,
@@ -542,9 +549,11 @@ class _FormTextFieldState extends State<FormTextField> {
                             fontWeight: FontWeight.w400,
                             color: colors.textMuted,
                           ),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: widget.prefixIcon != null ? 10 : 16,
-                            vertical: 14,
+                          contentPadding: EdgeInsets.fromLTRB(
+                            widget.prefixIcon != null ? 10 : 16,
+                            14,
+                            widget.trailing != null ? 4 : 16,
+                            14,
                           ),
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
@@ -568,6 +577,14 @@ class _FormTextFieldState extends State<FormTextField> {
                         ),
                       ),
                     ),
+                    if (widget.trailing != null)
+                      Padding(
+                        padding: EdgeInsets.only(
+                          right: 8,
+                          top: isMultiline ? 8 : 0,
+                        ),
+                        child: widget.trailing!,
+                      ),
                   ],
                 ),
               ),

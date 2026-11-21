@@ -14,6 +14,7 @@ import '../../services/financial_calculator.dart';
 import '../../components/app_modal_sheet.dart';
 import '../../components/app_avatar.dart';
 import '../../components/form_widgets.dart';
+import '../../components/voice_note_field.dart';
 import '../../l10n/app_tr.dart';
 
 // ─── Route wrapper ────────────────────────────────────────────────────────────
@@ -380,12 +381,13 @@ class _OrderFormSheetState extends State<_OrderFormSheet>
                     index: 5,
                     child: SheetField(
                       label: context.tr('ОПИСАНИЕ РАБОТЫ', 'WORK DESCRIPTION'),
-                      child: FormTextField(
+                      child: VoiceNoteField(
                         controller: _descCtrl,
                         prefixIcon: Icons.description_outlined,
                         hint: context.tr(
                             'Что нужно сделать...', 'What needs to be done...'),
-                        maxLines: 2,
+                        minLines: 2,
+                        maxLines: 4,
                       ),
                     ),
                   ),
@@ -397,12 +399,13 @@ class _OrderFormSheetState extends State<_OrderFormSheet>
                     index: 6,
                     child: SheetField(
                       label: context.tr('ВНУТРЕННИЕ ЗАМЕТКИ', 'INTERNAL NOTES'),
-                      child: FormTextField(
+                      child: VoiceNoteField(
                         controller: _notesCtrl,
                         prefixIcon: Icons.notes_rounded,
                         hint: context.tr(
                             'Комментарий для себя...', 'Note for yourself...'),
-                        maxLines: 2,
+                        minLines: 2,
+                        maxLines: 4,
                       ),
                     ),
                   ),

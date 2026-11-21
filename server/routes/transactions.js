@@ -81,7 +81,13 @@ router.get(
                 ...(filter.$or ? { $or: filter.$or } : {}),
               },
             },
-            { $group: { _id: '$type', total: { $sum: '$amountCents' } } },
+            {
+              $group: {
+                _id: '$type',
+                total: { $sum: '$amountCents' },
+                count: { $sum: 1 },
+              },
+            },
           ])
         : null;
 
@@ -102,12 +108,24 @@ router.get(
     if (summaryRows) {
       let incomeCents = 0;
       let expenseCents = 0;
+      let incomeCount = 0;
+      let expenseCount = 0;
       for (const row of summaryRows) {
-        if (row._id === 'income') incomeCents = row.total || 0;
-        else if (row._id === 'expense') expenseCents = row.total || 0;
+        if (row._id === 'income') {
+          incomeCents = row.total || 0;
+          incomeCount = row.count || 0;
+        } else if (row._id === 'expense') {
+          expenseCents = row.total || 0;
+          expenseCount = row.count || 0;
+        }
       }
       payload.incomeCents = incomeCents;
       payload.expenseCents = expenseCents;
+      payload.counts = {
+        total: incomeCount + expenseCount,
+        income: incomeCount,
+        expense: expenseCount,
+      };
     }
 
     dataCache.set(cacheKey, payload, 20000);

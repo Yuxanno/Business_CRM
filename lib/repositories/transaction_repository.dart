@@ -7,12 +7,14 @@ class TransactionPage {
     required this.hasMore,
     this.incomeCents,
     this.expenseCents,
+    this.counts,
   });
 
   final List<AppTransaction> items;
   final bool hasMore;
   final int? incomeCents;
   final int? expenseCents;
+  final ({int total, int income, int expense})? counts;
 }
 
 class TransactionRepository {
@@ -52,11 +54,21 @@ class TransactionRepository {
     final json = await _api.get(
       '/api/transactions?from=${Uri.encodeQueryComponent(start)}&to=${Uri.encodeQueryComponent(end)}&skip=$skip&limit=$limit$summaryFlag',
     );
+    final rawCounts = json['counts'];
+    ({int total, int income, int expense})? parsedCounts;
+    if (rawCounts is Map) {
+      parsedCounts = (
+        total: (rawCounts['total'] as num?)?.toInt() ?? 0,
+        income: (rawCounts['income'] as num?)?.toInt() ?? 0,
+        expense: (rawCounts['expense'] as num?)?.toInt() ?? 0,
+      );
+    }
     return TransactionPage(
       items: _parse(json),
       hasMore: json['hasMore'] == true,
       incomeCents: (json['incomeCents'] as num?)?.toInt(),
       expenseCents: (json['expenseCents'] as num?)?.toInt(),
+      counts: parsedCounts,
     );
   }
 

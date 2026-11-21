@@ -22,6 +22,8 @@ class DashboardProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _chartData = [];
   bool _isLoading = false;
   bool _hasData = false;
+  bool _hasLoadedOnce = false;
+  DateTime? _lastFetchedAt;
   String? _error;
 
   int get year => _year;
@@ -37,6 +39,8 @@ class DashboardProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get chartData => _chartData;
   bool get isLoading => _isLoading && !_hasData;
   bool get isRefreshing => _isLoading;
+  bool get hasData => _hasData;
+  bool get hasLoadedOnce => _hasLoadedOnce;
   String? get error => _error;
 
   void _applyPayload(Map<String, dynamic> json) {
@@ -58,14 +62,55 @@ class DashboardProvider extends ChangeNotifier {
     _hasData = true;
   }
 
-  Future<void> load({int? year, int? month}) async {
+  Future<void> hydrateFromCache() async {
+    final cacheKey = 'dashboard_${_year}_$_month';
+    final cached = await LocalCache.readMap(cacheKey);
+    if (cached != null) {
+      _applyPayload(cached);
+    }
+  }
+
+  void applyBootstrapPayload(
+    Map<String, dynamic> json, {
+    required int year,
+    required int month,
+  }) {
+    _year = year;
+    _month = month;
+    _applyPayload(json);
+    _hasLoadedOnce = true;
+    _isLoading = false;
+    _lastFetchedAt = DateTime.now();
+    notifyListeners();
+    unawaited(LocalCache.writeMap('dashboard_${_year}_$_month', json));
+  }
+
+  Future<void> load({int? year, int? month, bool force = false}) async {
+    final periodChanged =
+        (year != null && year != _year) || (month != null && month != _month);
     if (year != null) _year = year;
     if (month != null) _month = month;
 
+    if (!force &&
+        !periodChanged &&
+        _hasData &&
+        _lastFetchedAt != null &&
+        DateTime.now().difference(_lastFetchedAt!) <
+            const Duration(seconds: 20)) {
+      return;
+    }
+
     final cacheKey = 'dashboard_${_year}_$_month';
 
+    if (_isLoading && !periodChanged) return;
+    _isLoading = true;
+    _error = null;
+    if (periodChanged || !_hasData) {
+      notifyListeners();
+    }
+
     // 1. Instant local snapshot so Home renders in < 50ms
-    if (!_hasData) {
+    if (!_hasData || periodChanged) {
       final cached = await LocalCache.readMap(cacheKey);
       if (cached != null) {
         _applyPayload(cached);
@@ -73,21 +118,19 @@ class DashboardProvider extends ChangeNotifier {
       }
     }
 
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
     try {
       final raw = await _api.get('/api/dashboard?year=$_year&month=$_month&tz=${DateTime.now().timeZoneOffset.inMinutes}');
       if (raw is Map) {
         final json = Map<String, dynamic>.from(raw);
         _applyPayload(json);
+        _lastFetchedAt = DateTime.now();
         unawaited(LocalCache.writeMap(cacheKey, json));
       }
     } catch (e) {
       _error = e.toString();
     } finally {
       _isLoading = false;
+      _hasLoadedOnce = true;
       notifyListeners();
     }
   }
@@ -110,10 +153,10 @@ class DashboardProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> reload() => load();
+  Future<void> reload() => load(force: true);
 
   void setMonth(int year, int month) {
     _hasData = false;
-    load(year: year, month: month);
+    load(year: year, month: month, force: true);
   }
 }

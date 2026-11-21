@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'services/notification_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'l10n/app_localizations.dart';
 import 'l10n/app_tr.dart';
+import 'components/app_splash_screen.dart';
 import 'models/transaction.dart';
 import 'theme/app_theme.dart';
 import 'providers/settings_provider.dart';
@@ -24,8 +27,33 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
+  await NotificationService.instance.init();
+
   final settingsProvider = SettingsProvider();
-  await settingsProvider.init();
+  final customerProvider = CustomerProvider();
+  final orderProvider = OrderProvider();
+  final financeProvider = FinanceProvider();
+  final debtProvider = DebtProvider();
+  final dashboardProvider = DashboardProvider();
+
+  await settingsProvider.init(skipRemoteSync: true);
+  Uint8List? splashLogoBytes;
+  if (!kIsWeb) {
+    try {
+      final bd = await rootBundle.load('assets/images/logo.png');
+      splashLogoBytes = bd.buffer.asUint8List();
+    } catch (_) {}
+  }
+
+  if (settingsProvider.isOnboardingDone) {
+    await Future.wait([
+      dashboardProvider.hydrateFromCache(),
+      financeProvider.hydrateFromCache(),
+      orderProvider.hydrateFromCache(),
+      customerProvider.hydrateFromCache(),
+      debtProvider.hydrateFromCache(),
+    ]);
+  }
 
   // Dev only: flutter run --dart-define=SEED_CATEGORIES=true
   if (const bool.fromEnvironment('SEED_CATEGORIES')) {
@@ -51,19 +79,21 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: settingsProvider),
-        ChangeNotifierProvider(create: (_) => CustomerProvider()),
-        ChangeNotifierProvider(create: (_) => OrderProvider()),
-        ChangeNotifierProvider(create: (_) => FinanceProvider()),
-        ChangeNotifierProvider(create: (_) => DebtProvider()),
-        ChangeNotifierProvider(create: (_) => DashboardProvider()),
+        ChangeNotifierProvider.value(value: customerProvider),
+        ChangeNotifierProvider.value(value: orderProvider),
+        ChangeNotifierProvider.value(value: financeProvider),
+        ChangeNotifierProvider.value(value: debtProvider),
+        ChangeNotifierProvider.value(value: dashboardProvider),
       ],
-      child: const BusinessManagerApp(),
+      child: BusinessManagerApp(splashLogoBytes: splashLogoBytes),
     ),
   );
 }
 
 class BusinessManagerApp extends StatefulWidget {
-  const BusinessManagerApp({super.key});
+  const BusinessManagerApp({super.key, this.splashLogoBytes});
+
+  final Uint8List? splashLogoBytes;
 
   @override
   State<BusinessManagerApp> createState() => _BusinessManagerAppState();
@@ -103,6 +133,10 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       routerConfig: _router,
+      builder: (context, child) => AppStartupSplash(
+        logoBytes: widget.splashLogoBytes,
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

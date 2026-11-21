@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +6,7 @@ import '../l10n/app_tr.dart';
 import '../models/app_settings.dart';
 import '../models/transaction.dart';
 import '../repositories/settings_repository.dart';
+import '../services/notification_service.dart';
 
 class SettingsProvider extends ChangeNotifier {
   final _repo = SettingsRepository();
@@ -202,7 +204,7 @@ class SettingsProvider extends ChangeNotifier {
     await _saveCategories();
   }
 
-  Future<void> init() async {
+  Future<void> init({bool skipRemoteSync = false}) async {
     _isLoading = true;
     notifyListeners();
     _settings = await _repo.load();
@@ -210,7 +212,46 @@ class SettingsProvider extends ChangeNotifier {
     await _loadCategories();
     _isLoading = false;
     notifyListeners();
-    _syncFromServer();
+    if (!skipRemoteSync && _settings.isOnboardingDone) {
+      _syncFromServer();
+    }
+  }
+
+  Future<void> applyServerUser(Map<String, dynamic> user) async {
+    final nextCurrency =
+        (user['currency'] ?? '').toString().isNotEmpty
+            ? user['currency'].toString()
+            : _settings.currency;
+    final nextLocale =
+        (user['locale'] ?? '').toString().isNotEmpty
+            ? user['locale'].toString()
+            : _settings.locale;
+    final nextBusiness =
+        user['businessName'] != null
+            ? user['businessName'].toString()
+            : _settings.businessName;
+    final nextOwner =
+        (user['name'] ?? '').toString().isNotEmpty
+            ? user['name'].toString()
+            : _settings.ownerName;
+
+    if (nextCurrency == _settings.currency &&
+        nextLocale == _settings.locale &&
+        nextBusiness == _settings.businessName &&
+        nextOwner == _settings.ownerName) {
+      return;
+    }
+
+    _settings = _settings.copyWith(
+      currency: nextCurrency,
+      locale: nextLocale,
+      businessName: nextBusiness,
+      ownerName: nextOwner,
+    );
+    AppTr.isEn = _settings.locale == 'en';
+    await _repo.save(_settings);
+    notifyListeners();
+    unawaited(NotificationService.instance.onLocaleChanged(_settings.locale));
   }
 
   Future<void> reload() async {
@@ -249,6 +290,7 @@ class SettingsProvider extends ChangeNotifier {
     AppTr.isEn = _settings.locale == 'en';
     await _repo.save(_settings);
     notifyListeners();
+    unawaited(NotificationService.instance.onLocaleChanged(_settings.locale));
   }
 
   Future<void> update(AppSettings updated) async {
@@ -256,6 +298,7 @@ class SettingsProvider extends ChangeNotifier {
     AppTr.isEn = _settings.locale == 'en';
     await _repo.save(_settings);
     notifyListeners();
+    unawaited(NotificationService.instance.onLocaleChanged(_settings.locale));
   }
 
   Future<void> completeOnboarding({
@@ -276,6 +319,7 @@ class SettingsProvider extends ChangeNotifier {
     AppTr.isEn = locale == 'en';
     await _repo.save(_settings);
     notifyListeners();
+    unawaited(NotificationService.instance.onLocaleChanged(_settings.locale));
   }
 
   Future<void> setLocale(String locale) async {
@@ -283,6 +327,7 @@ class SettingsProvider extends ChangeNotifier {
     _settings = _settings.copyWith(locale: locale);
     await _repo.save(_settings);
     notifyListeners();
+    unawaited(NotificationService.instance.onLocaleChanged(locale));
 
     try {
       await _repo.syncToServer(locale: locale);

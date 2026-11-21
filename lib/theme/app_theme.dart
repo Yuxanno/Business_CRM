@@ -1,11 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 import 'app_spacing.dart';
 
 class AppTheme {
   AppTheme._();
+
+  static const List<String> _fontFallback = [
+    'Inter',
+    '-apple-system',
+    'BlinkMacSystemFont',
+    'Segoe UI',
+    'Roboto',
+    'sans-serif',
+  ];
+
+  static TextStyle _font({
+    Color? color,
+    double? fontSize,
+    FontWeight? fontWeight,
+    double? letterSpacing,
+    double? height,
+  }) {
+    return TextStyle(
+      color: color,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      letterSpacing: letterSpacing,
+      height: height,
+      fontFamilyFallback: _fontFallback,
+    );
+  }
 
   static ThemeData get light => _buildTheme(
         brightness: Brightness.light,
@@ -19,7 +44,7 @@ class AppTheme {
     required SystemUiOverlayStyle systemUiOverlayStyle,
   }) {
     final isLight = brightness == Brightness.light;
-    final baseText = GoogleFonts.manropeTextTheme();
+    final baseText = Typography.material2021().black;
 
     final colorScheme = ColorScheme(
       brightness: brightness,
@@ -66,6 +91,7 @@ class AppTheme {
         color: color ?? semantics.textPrimary,
         letterSpacing: letterSpacing,
         height: height,
+        fontFamilyFallback: _fontFallback,
       );
     }
 
@@ -107,7 +133,7 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
         systemOverlayStyle: systemUiOverlayStyle,
-        titleTextStyle: GoogleFonts.manrope(
+        titleTextStyle: _font(
           color: semantics.textPrimary,
           fontSize: 20,
           fontWeight: FontWeight.w800,
@@ -158,11 +184,11 @@ class AppTheme {
         unselectedItemColor: semantics.textMuted,
         elevation: 0,
         type: BottomNavigationBarType.fixed,
-        selectedLabelStyle: GoogleFonts.manrope(
+        selectedLabelStyle: _font(
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
-        unselectedLabelStyle: GoogleFonts.manrope(
+        unselectedLabelStyle: _font(
           fontSize: 11,
           fontWeight: FontWeight.w500,
         ),
@@ -202,12 +228,12 @@ class AppTheme {
           horizontal: AppSpacing.lg,
           vertical: AppSpacing.sm,
         ),
-        titleTextStyle: GoogleFonts.manrope(
+        titleTextStyle: _font(
           color: semantics.textPrimary,
           fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
-        subtitleTextStyle: GoogleFonts.manrope(
+        subtitleTextStyle: _font(
           color: semantics.textSecondary,
           fontSize: 12,
         ),

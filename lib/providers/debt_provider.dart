@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../models/debt.dart';
 import '../repositories/debt_repository.dart';
 import '../services/local_cache.dart';
+import '../services/notification_service.dart';
 
 class DebtProvider extends ChangeNotifier {
-  static const int pageSize = 25;
+  static const int pageSize = 50;
   static const _cacheKey = 'debts_page1';
 
   final _repo = DebtRepository();
@@ -16,6 +17,7 @@ class DebtProvider extends ChangeNotifier {
   bool _isLoadingMore = false;
   bool _hasMore = false;
   bool _hasLoadedOnce = false;
+  DateTime? _lastFetchedAt;
   String? _error;
 
   DebtDirection get selectedDirection => _selectedDirection;
@@ -67,7 +69,50 @@ class DebtProvider extends ChangeNotifier {
   }
   int get totalCount => (_counts?['total'] as num?)?.toInt() ?? _debts.length;
 
-  Future<void> load({bool silent = false}) async {
+  Future<void> hydrateFromCache() async {
+    _counts ??= await LocalCache.readMap('${_cacheKey}_counts');
+    final cached = await LocalCache.readMap(_cacheKey);
+    if (cached != null) {
+      final rawItems = (cached['items'] as List?) ?? const [];
+      _debts = rawItems
+          .map((e) => Debt.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+      _hasMore = cached['hasMore'] == true;
+      _hasLoadedOnce = true;
+    }
+  }
+
+  void applyBootstrapPayload(Map<String, dynamic> json) {
+    final rawItems = (json['items'] as List?) ?? const [];
+    _debts = rawItems
+        .map((e) => Debt.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    _hasMore = json['hasMore'] == true;
+    _hasLoadedOnce = true;
+    _isLoading = false;
+    _lastFetchedAt = DateTime.now();
+
+    final rawCounts = json['counts'];
+    if (rawCounts is Map) {
+      _counts = Map<String, dynamic>.from(rawCounts);
+      unawaited(LocalCache.writeMap('${_cacheKey}_counts', _counts!));
+    }
+    notifyListeners();
+    unawaited(LocalCache.writeMap(_cacheKey, {
+      'items': _debts.map((d) => d.toMap()).toList(),
+      'hasMore': _hasMore,
+    }));
+  }
+
+  Future<void> load({bool silent = false, bool force = false}) async {
+    if (!force &&
+        _hasLoadedOnce &&
+        _lastFetchedAt != null &&
+        DateTime.now().difference(_lastFetchedAt!) <
+            const Duration(seconds: 20)) {
+      return;
+    }
+
     if (_debts.isEmpty) {
       _counts ??= await LocalCache.readMap('${_cacheKey}_counts');
       final cached = await LocalCache.readMap(_cacheKey);
@@ -81,10 +126,14 @@ class DebtProvider extends ChangeNotifier {
       }
     }
 
-    if (!silent) {
+    if (_isLoading) return;
+    if (!silent && _debts.isEmpty) {
       _isLoading = true;
       _error = null;
       notifyListeners();
+    } else {
+      _isLoading = true;
+      _error = null;
     }
 
     try {
@@ -92,19 +141,20 @@ class DebtProvider extends ChangeNotifier {
       _debts = page.items;
       _hasMore = page.hasMore;
       _hasLoadedOnce = true;
+      _lastFetchedAt = DateTime.now();
       unawaited(refreshCounts());
 
       unawaited(LocalCache.writeMap(_cacheKey, {
         'items': _debts.map((d) => d.toMap()).toList(),
         'hasMore': _hasMore,
       }));
+      unawaited(NotificationService.instance.updateDebts(_debts));
     } catch (e) {
       _error = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
     }
-    if (_hasMore) unawaited(loadAll());
   }
 
   /// Refreshes real totals from the server.
@@ -161,7 +211,10 @@ class DebtProvider extends ChangeNotifier {
 
   Future<void> add(Debt debt) async {
     await _repo.insert(debt);
-    await load();
+    _debts = [debt, ..._debts];
+    notifyListeners();
+    unawaited(NotificationService.instance.updateDebts(_debts));
+    unawaited(load(silent: true, force: true));
   }
 
   Future<void> update(Debt debt) async {
@@ -170,6 +223,7 @@ class DebtProvider extends ChangeNotifier {
     if (idx != -1) {
       _debts[idx] = debt;
       notifyListeners();
+      unawaited(NotificationService.instance.updateDebts(_debts));
     }
     unawaited(refreshCounts());
   }
@@ -178,6 +232,7 @@ class DebtProvider extends ChangeNotifier {
     await _repo.delete(id);
     _debts.removeWhere((d) => d.id == id);
     notifyListeners();
+    unawaited(NotificationService.instance.updateDebts(_debts));
     unawaited(refreshCounts());
   }
 
@@ -216,6 +271,7 @@ class DebtProvider extends ChangeNotifier {
     if (idx != -1) {
       _debts[idx] = fresh ?? updatedDebt;
       notifyListeners();
+      unawaited(NotificationService.instance.updateDebts(_debts));
     }
     unawaited(refreshCounts());
   }

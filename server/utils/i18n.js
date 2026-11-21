@@ -24,6 +24,16 @@ const ERROR_EN = {
   'Укажите название и клиента': 'Enter title and customer',
   'Укажите сумму, тип и дату': 'Enter amount, type, and date',
   'Операция не найдена': 'Transaction not found',
+  'Голосовой ввод не настроен (добавьте GROQ_API_KEY в .env)':
+    'Voice input is not configured (add GROQ_API_KEY to .env)',
+  'Запись слишком короткая — попробуйте ещё раз':
+    'Recording is too short — please try again',
+  'Неверный ключ GROQ_API_KEY': 'Invalid GROQ_API_KEY',
+  'Лимит запросов Groq временно исчерпан, попробуйте через минуту':
+    'Groq rate limit reached, please try again in a minute',
+  'Ошибка распознавания речи': 'Speech recognition failed',
+  'Не удалось связаться с сервисом распознавания речи':
+    'Could not reach speech recognition service',
 };
 
 function isEnglishRequest(req) {

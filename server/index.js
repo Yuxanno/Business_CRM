@@ -1,6 +1,8 @@
 require('dotenv').config();
 
 const dns = require('dns');
+const fs = require('fs');
+const path = require('path');
 const net = require('net');
 const tls = require('tls');
 const express = require('express');
@@ -25,7 +27,7 @@ const PORT = process.env.PORT || 3001;
 app.set('etag', 'weak');
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(compression({ threshold: 512 }));
+app.use(compression({ threshold: 256 }));
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -99,13 +101,49 @@ app.use('/api/orders', require('./routes/orders'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/debts', require('./routes/debts'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/bootstrap', require('./routes/bootstrap'));
+app.use('/api/speech', require('./routes/speech'));
 
 app.get('/api', (req, res) => {
   res.json({ message: 'BizFlow API', version: '1.0.0' });
 });
 
+// ─── Static Flutter Web (gzip + cache) ─────────────────────────────────────
+const webBuildDir = path.join(__dirname, '..', 'build', 'web');
+if (fs.existsSync(webBuildDir)) {
+  app.use(
+    express.static(webBuildDir, {
+      etag: true,
+      lastModified: true,
+      setHeaders: (res, filePath) => {
+        if (
+          filePath.endsWith('index.html') ||
+          filePath.endsWith('flutter_bootstrap.js')
+        ) {
+          res.setHeader('Cache-Control', 'no-cache');
+        } else if (
+          filePath.includes(`${path.sep}canvaskit${path.sep}`) ||
+          filePath.includes(`${path.sep}assets${path.sep}`) ||
+          filePath.includes(`${path.sep}icons${path.sep}`) ||
+          filePath.endsWith('main.dart.js')
+        ) {
+          res.setHeader('Cache-Control', 'public, max-age=604800');
+        }
+      },
+    })
+  );
+}
+
 // ─── 404 fallback ─────────────────────────────────────────────────────────────
 app.use((req, res) => {
+  if (
+    req.method === 'GET' &&
+    !req.path.startsWith('/api') &&
+    fs.existsSync(path.join(webBuildDir, 'index.html'))
+  ) {
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.sendFile(path.join(webBuildDir, 'index.html'));
+  }
   res.status(404).json({ error: 'Route not found' });
 });
 

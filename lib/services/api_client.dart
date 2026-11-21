@@ -35,7 +35,13 @@ class ApiClient {
 
   static String get baseUrl {
     if (_envApiUrl.isNotEmpty) return _envApiUrl;
-    if (kIsWeb) return 'http://localhost:3001';
+    if (kIsWeb) {
+      final port = Uri.base.port;
+      if (port == 3001 || port == 80 || port == 443) {
+        return '';
+      }
+      return 'http://localhost:3001';
+    }
     return 'http://localhost:3001';
   }
 
@@ -100,6 +106,55 @@ class ApiClient {
       _send('PUT', path, body);
   Future<dynamic> delete(String path, [Map<String, dynamic>? body]) =>
       _send('DELETE', path, body);
+
+  /// Sends raw binary bytes (e.g. recorded audio) without invalidating CRUD caches.
+  Future<dynamic> postBinary(
+    String path,
+    Uint8List bytes, {
+    required String contentType,
+    String? filename,
+    String? language,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (!_tokenLoaded) {
+      final prefs = await SharedPreferences.getInstance();
+      _cachedToken = prefs.getString('authToken');
+      _tokenLoaded = true;
+    }
+
+    final uri = Uri.parse('$baseUrl$path');
+    final headers = <String, String>{
+      'Content-Type': contentType,
+      'Accept-Language': AppTr.isEn ? 'en' : 'ru',
+      if (_cachedToken != null && _cachedToken!.isNotEmpty)
+        'Authorization': 'Bearer $_cachedToken',
+      if (filename != null && filename.isNotEmpty)
+        'X-Audio-Filename': filename,
+      if (language != null && language.isNotEmpty)
+        'X-Audio-Language': language,
+    };
+
+    final response =
+        await _client.post(uri, headers: headers, body: bytes).timeout(timeout);
+
+    dynamic decoded;
+    if (response.body.isNotEmpty) {
+      decoded = jsonDecode(response.body);
+    }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return decoded;
+    }
+
+    final rawMessage = decoded is Map && decoded['error'] != null
+        ? decoded['error'].toString()
+        : AppTr.tr('Ошибка сервера (${response.statusCode})',
+            'Server error (${response.statusCode})');
+    throw ApiException(
+      _localizeServerError(rawMessage),
+      statusCode: response.statusCode,
+    );
+  }
 
   Future<dynamic> _send(
     String method,
@@ -190,6 +245,16 @@ class ApiClient {
     'Укажите название и клиента': 'Enter title and customer',
     'Укажите сумму, тип и дату': 'Enter amount, type, and date',
     'Операция не найдена': 'Transaction not found',
+    'Голосовой ввод не настроен (добавьте GROQ_API_KEY в .env)':
+        'Voice input is not configured (add GROQ_API_KEY to .env)',
+    'Запись слишком короткая — попробуйте ещё раз':
+        'Recording is too short — please try again',
+    'Неверный ключ GROQ_API_KEY': 'Invalid GROQ_API_KEY',
+    'Лимит запросов Groq временно исчерпан, попробуйте через минуту':
+        'Groq rate limit reached, please try again in a minute',
+    'Ошибка распознавания речи': 'Speech recognition failed',
+    'Не удалось связаться с сервисом распознавания речи':
+        'Could not reach speech recognition service',
   };
 
   static String _localizeServerError(String message) {

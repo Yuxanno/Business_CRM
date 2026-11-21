@@ -5,7 +5,7 @@ import '../repositories/customer_repository.dart';
 import '../services/local_cache.dart';
 
 class CustomerProvider extends ChangeNotifier {
-  static const int pageSize = 25;
+  static const int pageSize = 50;
   static const _cacheKey = 'customers_page1';
 
   final _repo = CustomerRepository();
@@ -16,6 +16,7 @@ class CustomerProvider extends ChangeNotifier {
   bool _isLoadingMore = false;
   bool _hasMore = false;
   bool _hasLoadedOnce = false;
+  DateTime? _lastFetchedAt;
   String? _error;
 
   List<Customer> get allCustomers => _customers;
@@ -41,7 +42,50 @@ class CustomerProvider extends ChangeNotifier {
   int get withOrdersCount => (_counts?['withOrders'] as num?)?.toInt() ?? _customers.where((c) => c.totalOrdersCount > 0).length;
   int? get withDebtCountFromServer => (_counts?['withDebt'] as num?)?.toInt();
 
-  Future<void> load({bool silent = false}) async {
+  Future<void> hydrateFromCache() async {
+    _counts ??= await LocalCache.readMap('${_cacheKey}_counts');
+    final cached = await LocalCache.readMap(_cacheKey);
+    if (cached != null) {
+      final rawItems = (cached['items'] as List?) ?? const [];
+      _customers = rawItems
+          .map((e) => Customer.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+      _hasMore = cached['hasMore'] == true;
+      _hasLoadedOnce = true;
+    }
+  }
+
+  void applyBootstrapPayload(Map<String, dynamic> json) {
+    final rawItems = (json['items'] as List?) ?? const [];
+    _customers = rawItems
+        .map((e) => Customer.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    _hasMore = json['hasMore'] == true;
+    _hasLoadedOnce = true;
+    _isLoading = false;
+    _lastFetchedAt = DateTime.now();
+
+    final rawCounts = json['counts'];
+    if (rawCounts is Map) {
+      _counts = Map<String, dynamic>.from(rawCounts);
+      unawaited(LocalCache.writeMap('${_cacheKey}_counts', _counts!));
+    }
+    notifyListeners();
+    unawaited(LocalCache.writeMap(_cacheKey, {
+      'items': _customers.map((c) => c.toMap()).toList(),
+      'hasMore': _hasMore,
+    }));
+  }
+
+  Future<void> load({bool silent = false, bool force = false}) async {
+    if (!force &&
+        _hasLoadedOnce &&
+        _lastFetchedAt != null &&
+        DateTime.now().difference(_lastFetchedAt!) <
+            const Duration(seconds: 20)) {
+      return;
+    }
+
     if (_customers.isEmpty) {
       _counts ??= await LocalCache.readMap('${_cacheKey}_counts');
       final cached = await LocalCache.readMap(_cacheKey);
@@ -55,10 +99,14 @@ class CustomerProvider extends ChangeNotifier {
       }
     }
 
-    if (!silent) {
+    if (_isLoading) return;
+    if (!silent && _customers.isEmpty) {
       _isLoading = true;
       _error = null;
       notifyListeners();
+    } else {
+      _isLoading = true;
+      _error = null;
     }
 
     try {
@@ -66,6 +114,7 @@ class CustomerProvider extends ChangeNotifier {
       _customers = page.items;
       _hasMore = page.hasMore;
       _hasLoadedOnce = true;
+      _lastFetchedAt = DateTime.now();
       unawaited(refreshCounts());
 
       unawaited(LocalCache.writeMap(_cacheKey, {
@@ -78,7 +127,6 @@ class CustomerProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-    if (_hasMore) unawaited(loadAll());
   }
 
   /// Refreshes real totals from the server.
@@ -134,13 +182,18 @@ class CustomerProvider extends ChangeNotifier {
   void setSearch(String query) {
     _searchQuery = query;
     notifyListeners();
+    if (query.trim().isNotEmpty && _hasMore) {
+      unawaited(loadAll());
+    }
   }
 
   Future<Customer?> getById(String id) => _repo.getById(id);
 
   Future<void> add(Customer customer) async {
     await _repo.insert(customer);
-    await load();
+    _customers = [customer, ..._customers];
+    notifyListeners();
+    unawaited(load(silent: true, force: true));
   }
 
   Future<void> update(Customer customer) async {
