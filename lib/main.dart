@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -29,13 +31,24 @@ Future<void> main() async {
   final settingsProvider = SettingsProvider();
   final dashboardProvider = DashboardProvider();
 
-  // Start preloading settings & dashboard cache in background without blocking runApp().
+  // Start loading settings & dashboard cache immediately without blocking runApp().
   final preloadFuture = () async {
     await settingsProvider.init(skipRemoteSync: true);
     if (settingsProvider.isOnboardingDone) {
       await dashboardProvider.hydrateFromCache();
     }
   }();
+
+  // Decode the tiny 3.5 KB in-memory logo (~2ms, zero disk I/O) so Frame 1
+  // renders the logo synchronously with zero white-box delay.
+  ui.Image? initialLogoImage;
+  if (!kIsWeb) {
+    try {
+      final codec = await ui.instantiateImageCodec(kEmbeddedSplashLogoBytes);
+      final frame = await codec.getNextFrame();
+      initialLogoImage = frame.image;
+    } catch (_) {}
+  }
 
   runApp(
     MultiProvider(
@@ -48,6 +61,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: dashboardProvider),
       ],
       child: BusinessManagerApp(
+        initialLogoImage: initialLogoImage,
         preloadFuture: preloadFuture,
       ),
     ),
@@ -57,9 +71,11 @@ Future<void> main() async {
 class BusinessManagerApp extends StatefulWidget {
   const BusinessManagerApp({
     super.key,
+    this.initialLogoImage,
     this.preloadFuture,
   });
 
+  final ui.Image? initialLogoImage;
   final Future<void>? preloadFuture;
 
   @override
@@ -100,8 +116,9 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       routerConfig: _router,
-      builder: (context, child) => AppSplashScreen(
+      builder: (context, child) => AppStartupSplash(
         router: _router,
+        initialLogoImage: widget.initialLogoImage,
         preloadFuture: widget.preloadFuture,
         child: child ?? const AppSplashWaitScreen(),
       ),
