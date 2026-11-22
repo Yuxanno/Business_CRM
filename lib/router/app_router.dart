@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../components/app_splash_screen.dart';
 import '../screens/onboarding/onboarding_screen.dart';
 import '../screens/shell/app_shell.dart';
 import '../screens/home/home_screen.dart';
@@ -46,7 +47,7 @@ class AppRouter {
         routes: [
           GoRoute(
             path: '/splash-wait',
-            builder: (ctx, state) => const SizedBox.shrink(),
+            builder: (ctx, state) => const AppSplashWaitScreen(),
           ),
           GoRoute(
             path: '/login',

@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -16,32 +17,50 @@ import 'providers/debt_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'router/app_router.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock to portrait without blocking runApp()
+  // Lock to portrait without blocking startup.
   unawaited(SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]));
 
+  final settingsProvider = SettingsProvider();
+  final dashboardProvider = DashboardProvider();
+
+  // Start preloading settings & dashboard cache in background without blocking runApp().
+  final preloadFuture = () async {
+    await settingsProvider.init(skipRemoteSync: true);
+    if (settingsProvider.isOnboardingDone) {
+      await dashboardProvider.hydrateFromCache();
+    }
+  }();
+
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider.value(value: settingsProvider),
         ChangeNotifierProvider(create: (_) => CustomerProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
         ChangeNotifierProvider(create: (_) => FinanceProvider()),
         ChangeNotifierProvider(create: (_) => DebtProvider()),
-        ChangeNotifierProvider(create: (_) => DashboardProvider()),
+        ChangeNotifierProvider.value(value: dashboardProvider),
       ],
-      child: const BusinessManagerApp(),
+      child: BusinessManagerApp(
+        preloadFuture: preloadFuture,
+      ),
     ),
   );
 }
 
 class BusinessManagerApp extends StatefulWidget {
-  const BusinessManagerApp({super.key});
+  const BusinessManagerApp({
+    super.key,
+    this.preloadFuture,
+  });
+
+  final Future<void>? preloadFuture;
 
   @override
   State<BusinessManagerApp> createState() => _BusinessManagerAppState();
@@ -81,9 +100,10 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       routerConfig: _router,
-      builder: (context, child) => AppStartupSplash(
+      builder: (context, child) => AppSplashScreen(
         router: _router,
-        child: child ?? const SizedBox.shrink(),
+        preloadFuture: widget.preloadFuture,
+        child: child ?? const AppSplashWaitScreen(),
       ),
     );
   }
