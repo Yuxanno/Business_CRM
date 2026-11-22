@@ -288,7 +288,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                   alignment: Alignment.topCenter,
                   children: [
                     ...previousChildren,
-                    if (currentChild != null) currentChild,
+                    ?currentChild,
                   ],
                 ),
                 child: provider.isLoading
@@ -565,22 +565,28 @@ class _FinanceTopBar extends StatelessWidget {
               key: const ValueKey('title-bar'),
               children: [
                 Expanded(
-                  child: Text(
-                    context.tr('Деньги', 'Finance'),
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.6,
-                      color: colors.textPrimary,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      context.tr('Деньги', 'Finance'),
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.6,
+                        color: colors.textPrimary,
+                      ),
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 // Search icon button
                 GestureDetector(
                   onTap: onToggleSearch,
                   child: Container(
-                    width: 38,
-                    height: 38,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
                       color: colors.surface,
                       borderRadius: BorderRadius.circular(12),
@@ -593,10 +599,10 @@ class _FinanceTopBar extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 // Month pill
                 Container(
-                  height: 38,
+                  height: 36,
                   decoration: BoxDecoration(
                     color: colors.surface,
                     borderRadius: BorderRadius.circular(12),
@@ -609,7 +615,7 @@ class _FinanceTopBar extends StatelessWidget {
                         behavior: HitTestBehavior.opaque,
                         onTap: onPrevMonth,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: Icon(
                             Icons.chevron_left_rounded,
                             size: 18,
@@ -621,18 +627,19 @@ class _FinanceTopBar extends StatelessWidget {
                         behavior: HitTestBehavior.opaque,
                         onTap: () => _showMonthModal(context),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.calendar_month_rounded,
-                                size: 14,
+                                size: 13,
                                 color: colors.primary,
                               ),
-                              const SizedBox(width: 5),
+                              const SizedBox(width: 4),
                               Text(
                                 DateHelper.formatMonthYear(selectedDate),
+                                maxLines: 1,
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
@@ -647,7 +654,7 @@ class _FinanceTopBar extends StatelessWidget {
                         behavior: HitTestBehavior.opaque,
                         onTap: onNextMonth,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: Icon(
                             Icons.chevron_right_rounded,
                             size: 18,
@@ -658,13 +665,13 @@ class _FinanceTopBar extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 // Add operation button
                 GestureDetector(
                   onTap: onAdd,
                   child: Container(
-                    width: 38,
-                    height: 38,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
                       color: colors.primary,
                       borderRadius: BorderRadius.circular(12),
@@ -965,43 +972,49 @@ class _SegTabItem extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : colors.textSecondary,
-                ),
-                child: Text(label),
-              ),
-              const SizedBox(width: 5),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? Colors.white.withValues(alpha: 0.22)
-                      : colors.surfaceSecondary,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOutCubic,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : colors.textMuted,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? Colors.white : colors.textSecondary,
+                    ),
+                    child: Text(label, maxLines: 1),
                   ),
-                  child: Text('$count'),
-                ),
+                  const SizedBox(width: 5),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Colors.white.withValues(alpha: 0.22)
+                          : colors.surfaceSecondary,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: selected ? Colors.white : colors.textMuted,
+                      ),
+                      child: Text('$count'),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1284,6 +1297,9 @@ class _TransactionRowTile extends StatelessWidget {
         tx.description?.isNotEmpty == true ? tx.description! : catLabel;
     final iconData =
         _CategoryMeta.icon(tx.category, tx.linkedEntityType, isIncome);
+    final amountText =
+        '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}';
+    final isLargeAmount = amountText.length > 13;
 
     return InkWell(
       onTap: isLinked ? null : onEdit,
@@ -1293,6 +1309,9 @@ class _TransactionRowTile extends StatelessWidget {
           vertical: 12,
         ),
         child: Row(
+          crossAxisAlignment: isLargeAmount
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.center,
           children: [
             // Category Icon
             Container(
@@ -1310,7 +1329,7 @@ class _TransactionRowTile extends StatelessWidget {
             ),
             const SizedBox(width: 12),
 
-            // Title + Category Badge + Notes
+            // Title + Category Badge + Notes (+ Amount below if large)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1328,21 +1347,25 @@ class _TransactionRowTile extends StatelessWidget {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colors.surfaceSecondary,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          catLabel,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: colors.textSecondary,
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceSecondary,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            catLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: colors.textSecondary,
+                            ),
                           ),
                         ),
                       ),
@@ -1383,21 +1406,40 @@ class _TransactionRowTile extends StatelessWidget {
                       ],
                     ],
                   ),
+                  if (isLargeAmount) ...[
+                    const SizedBox(height: 5),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        amountText,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: tileColor,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
             const SizedBox(width: 8),
 
-            // Amount + Actions
-            Text(
-              '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: tileColor,
-                fontFeatures: const [FontFeature.tabularFigures()],
+            // Amount (inline when compact) + Actions
+            if (!isLargeAmount)
+              Text(
+                amountText,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: tileColor,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
-            ),
             if (!isLinked) ...[
               const SizedBox(width: 8),
               GestureDetector(

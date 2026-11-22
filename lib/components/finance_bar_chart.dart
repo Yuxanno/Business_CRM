@@ -260,7 +260,7 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
             const SizedBox(width: 8),
             // Sliding pill mode toggle (Дни | Волна)
             SizedBox(
-              width: 136,
+              width: 148,
               height: 32,
               child: Container(
                 padding: const EdgeInsets.all(2),
@@ -350,7 +350,9 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
           child: _mode == _ChartMode.area
               ? Padding(
                   padding: const EdgeInsets.only(top: 10),
-                  child: Row(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
                     children: [
                       _ModeTab(
                         icon: Icons.trending_up_rounded,
@@ -367,7 +369,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
                           }
                         },
                       ),
-                      const SizedBox(width: 6),
                       _ModeTab(
                         icon: Icons.calendar_view_day_rounded,
                         label: context.tr('По дням', 'Daily'),
@@ -407,7 +408,7 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
                   alignment: Alignment.topCenter,
                   children: [
                     ...previousChildren,
-                    if (currentChild != null) currentChild,
+                    ?currentChild,
                   ],
                 ),
                 child: _mode == _ChartMode.bars
@@ -439,46 +440,46 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
 
         // Subtle bottom insight strip
         Container(
+          width: double.infinity,
           padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.md, vertical: 10),
           decoration: BoxDecoration(
             color: colors.background,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Icon(Icons.insights_rounded, size: 15, color: colors.primary),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  context.tr(
-                    'Активных дней: ${activeDays.length}',
-                    'Active days: ${activeDays.length}',
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.insights_rounded, size: 15, color: colors.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    context.tr(
+                      'Активных дней: ${activeDays.length}',
+                      'Active days: ${activeDays.length}',
+                    ),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textSecondary,
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textSecondary,
-                  ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  context.tr(
-                    'Пик активности: $peakDay $monthShort',
-                    'Peak day: $monthShort $peakDay',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: colors.textMuted,
-                  ),
+              Text(
+                context.tr(
+                  'Пик: $peakDay $monthShort',
+                  'Peak: $monthShort $peakDay',
+                ),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: colors.textMuted,
                 ),
               ),
             ],
@@ -1098,7 +1099,7 @@ class _ModeTab extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         decoration: BoxDecoration(
           color: (!transparentPill && selected)
               ? colors.surface
@@ -1115,26 +1116,29 @@ class _ModeTab extends StatelessWidget {
               : null,
         ),
         child: Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 13,
-                color: selected ? colors.primary : colors.textMuted,
-              ),
-              const SizedBox(width: 4),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? colors.textPrimary : colors.textMuted,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 13,
+                  color: selected ? colors.primary : colors.textMuted,
                 ),
-                child: Text(label),
-              ),
-            ],
+                const SizedBox(width: 4),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? colors.textPrimary : colors.textMuted,
+                  ),
+                  child: Text(label, maxLines: 1),
+                ),
+              ],
+            ),
           ),
         ),
       ),

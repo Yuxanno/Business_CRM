@@ -179,7 +179,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   alignment: Alignment.topCenter,
                   children: [
                     ...previousChildren,
-                    if (currentChild != null) currentChild,
+                    ?currentChild,
                   ],
                 ),
                 child: _loading

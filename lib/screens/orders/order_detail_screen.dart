@@ -164,6 +164,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             Navigator.of(context, rootNavigator: true).pop();
             HapticFeedback.mediumImpact();
             const uuid = Uuid();
+            final customerProvider = context.read<CustomerProvider>();
+            final dashboardProvider = context.read<DashboardProvider>();
             await context.read<OrderProvider>().recordPayment(
                   orderId: _order!.id,
                   customerId: _order!.customerId,
@@ -174,10 +176,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       ? notesCtrl.text.trim()
                       : null,
                 );
-            if (mounted) {
-              context.read<CustomerProvider>().load(silent: true);
-              context.read<DashboardProvider>().reload();
-            }
+            customerProvider.load(silent: true);
+            dashboardProvider.reload();
             _load();
           },
         ),

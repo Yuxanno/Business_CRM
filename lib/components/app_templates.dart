@@ -150,7 +150,7 @@ class AppListPage extends StatelessWidget {
                 fallbackRoute: fallbackRoute,
               ),
             ),
-            if (toolbar != null) toolbar!,
+            ?toolbar,
             Expanded(child: body),
           ],
         ),

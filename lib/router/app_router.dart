@@ -41,9 +41,13 @@ CustomTransitionPage<void> _modalPage(GoRouterState state, Widget child) {
 }
 
 class AppRouter {
-  static GoRouter router(bool onboardingDone) => GoRouter(
-        initialLocation: onboardingDone ? '/home' : '/login',
+  static GoRouter router({String initialLocation = '/splash-wait'}) => GoRouter(
+        initialLocation: initialLocation,
         routes: [
+          GoRoute(
+            path: '/splash-wait',
+            builder: (ctx, state) => const SizedBox.shrink(),
+          ),
           GoRoute(
             path: '/login',
             builder: (ctx, state) => const LoginScreen(),

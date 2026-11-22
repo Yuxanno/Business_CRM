@@ -848,34 +848,3 @@ class _HubSectionTitle extends StatelessWidget {
     );
   }
 }
-
-// Kept for hot-reload compatibility
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
-}
-
-class _MenuItem extends StatelessWidget {
-  const _MenuItem({
-    required this.label,
-    required this.onTap,
-    this.value,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final String? value;
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
-}

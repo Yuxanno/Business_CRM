@@ -73,7 +73,7 @@ class AuthHeader extends StatelessWidget {
             alignment: Alignment.topLeft,
             children: [
               ...previousChildren,
-              if (currentChild != null) currentChild,
+              ?currentChild,
             ],
           ),
           child: Column(
@@ -147,7 +147,7 @@ class AuthHeader extends StatelessWidget {
               alignment: Alignment.topLeft,
               children: [
                 ...previousChildren,
-                if (currentChild != null) currentChild,
+                ?currentChild,
               ],
             ),
             child: Text(

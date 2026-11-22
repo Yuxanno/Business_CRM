@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
-import '../theme/app_colors.dart';
 import 'app_skeleton.dart';
 
 /// Отображает текст с валютой, показывая skeleton пока данные загружаются

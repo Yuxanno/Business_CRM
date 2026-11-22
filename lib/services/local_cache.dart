@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+dynamic _decodeJsonInIsolate(String source) => jsonDecode(source);
+String _encodeJsonInIsolate(Map<String, dynamic> data) => jsonEncode(data);
 
 /// Fast two-tier snapshot cache (in-memory Map + SharedPreferences) for instant
 /// UI startup and zero-lag tab switching regardless of network speed.
@@ -18,7 +22,9 @@ class LocalCache {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString('$_prefix$key');
       if (raw == null || raw.isEmpty) return null;
-      final decoded = jsonDecode(raw);
+      final decoded = (!kIsWeb && raw.length > 8192)
+          ? await compute(_decodeJsonInIsolate, raw)
+          : jsonDecode(raw);
       Map<String, dynamic>? map;
       if (decoded is Map<String, dynamic>) {
         map = decoded;
@@ -38,7 +44,10 @@ class LocalCache {
     _mem[key] = data;
     try {
       final prefs = await SharedPreferences.getInstance();
-      unawaited(prefs.setString('$_prefix$key', jsonEncode(data)));
+      final encoded = (!kIsWeb)
+          ? await compute(_encodeJsonInIsolate, data)
+          : jsonEncode(data);
+      unawaited(prefs.setString('$_prefix$key', encoded));
     } catch (_) {}
   }
 

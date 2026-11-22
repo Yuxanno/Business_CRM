@@ -333,7 +333,7 @@ class SheetField extends StatelessWidget {
                 ),
               ),
             ),
-            if (trailingLabel != null) trailingLabel!,
+            ?trailingLabel,
           ],
         ),
         const SizedBox(height: 6),

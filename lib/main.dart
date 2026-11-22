@@ -1,16 +1,12 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'services/api_client.dart';
-import 'services/notification_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'l10n/app_localizations.dart';
 import 'l10n/app_tr.dart';
 import 'components/app_splash_screen.dart';
-import 'models/transaction.dart';
 import 'theme/app_theme.dart';
 import 'providers/settings_provider.dart';
 import 'providers/customer_provider.dart';
@@ -20,95 +16,32 @@ import 'providers/debt_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'router/app_router.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock to portrait
-  await SystemChrome.setPreferredOrientations([
+  // Lock to portrait without blocking runApp()
+  unawaited(SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
-  ]);
-
-  final settingsProvider = SettingsProvider();
-  final customerProvider = CustomerProvider();
-  final orderProvider = OrderProvider();
-  final financeProvider = FinanceProvider();
-  final debtProvider = DebtProvider();
-  final dashboardProvider = DashboardProvider();
-
-  await settingsProvider.init(skipRemoteSync: true);
-  Uint8List? splashLogoBytes;
-  if (!kIsWeb) {
-    try {
-      final bd = await rootBundle.load('assets/images/logo.png');
-      splashLogoBytes = bd.buffer.asUint8List();
-    } catch (_) {}
-  }
-
-  // Dev only: flutter run --dart-define=SEED_CATEGORIES=true
-  if (const bool.fromEnvironment('SEED_CATEGORIES')) {
-    const income = [
-      'Продажа товаров', 'Услуги', 'Консультации', 'Подписки', 'Аренда (доход)',
-      'Комиссии', 'Реклама (доход)', 'Обучение', 'Проекты', 'Поддержка',
-      'Лицензии', 'Партнёрка', 'Возвраты', 'Гранты', 'Прочий доход',
-    ];
-    const expense = [
-      'Закупка товаров', 'Аренда офиса', 'Зарплаты', 'Налоги', 'Реклама',
-      'Транспорт', 'Связь и интернет', 'Коммунальные', 'Оборудование', 'Софт и сервисы',
-      'Обучение персонала', 'Питание', 'Ремонт', 'Банковские комиссии', 'Прочие расходы',
-    ];
-    for (final c in income) {
-      await settingsProvider.addCategory(TransactionType.income, c);
-    }
-    for (final c in expense) {
-      await settingsProvider.addCategory(TransactionType.expense, c);
-    }
-  }
+  ]));
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: settingsProvider),
-        ChangeNotifierProvider.value(value: customerProvider),
-        ChangeNotifierProvider.value(value: orderProvider),
-        ChangeNotifierProvider.value(value: financeProvider),
-        ChangeNotifierProvider.value(value: debtProvider),
-        ChangeNotifierProvider.value(value: dashboardProvider),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => CustomerProvider()),
+        ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProvider(create: (_) => FinanceProvider()),
+        ChangeNotifierProvider(create: (_) => DebtProvider()),
+        ChangeNotifierProvider(create: (_) => DashboardProvider()),
       ],
-      child: BusinessManagerApp(splashLogoBytes: splashLogoBytes),
+      child: const BusinessManagerApp(),
     ),
   );
-
-  // Hydrate caches AFTER runApp so the animated splash renders immediately on frame 1.
-  if (settingsProvider.isOnboardingDone) {
-    unawaited(() async {
-      await dashboardProvider.hydrateFromCache();
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      await financeProvider.hydrateFromCache();
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      await orderProvider.hydrateFromCache();
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      await debtProvider.hydrateFromCache();
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      await customerProvider.hydrateFromCache();
-    }());
-  }
-
-  // Start background keep-alive & notifications after initial splash settles.
-  unawaited(Future<void>.delayed(
-    const Duration(milliseconds: 1200),
-    () => ApiClient.instance.startKeepAlive(),
-  ));
-  unawaited(Future<void>.delayed(
-    const Duration(milliseconds: 1700),
-    () => NotificationService.instance.init(),
-  ));
 }
 
 class BusinessManagerApp extends StatefulWidget {
-  const BusinessManagerApp({super.key, this.splashLogoBytes});
-
-  final Uint8List? splashLogoBytes;
+  const BusinessManagerApp({super.key});
 
   @override
   State<BusinessManagerApp> createState() => _BusinessManagerAppState();
@@ -120,8 +53,7 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
   @override
   void initState() {
     super.initState();
-    final settings = context.read<SettingsProvider>();
-    _router = AppRouter.router(settings.isOnboardingDone);
+    _router = AppRouter.router(initialLocation: '/splash-wait');
   }
 
   @override
@@ -132,10 +64,11 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsProvider>();
-    AppTr.isEn = settings.locale == 'en';
+    final localeCode =
+        context.select<SettingsProvider, String>((s) => s.locale);
+    AppTr.isEn = localeCode == 'en';
 
-    final locale = settings.locale == 'en'
+    final locale = localeCode == 'en'
         ? const Locale('en')
         : const Locale('ru');
 
@@ -149,7 +82,7 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       routerConfig: _router,
       builder: (context, child) => AppStartupSplash(
-        logoBytes: widget.splashLogoBytes,
+        router: _router,
         child: child ?? const SizedBox.shrink(),
       ),
     );

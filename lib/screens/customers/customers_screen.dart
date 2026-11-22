@@ -159,7 +159,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   alignment: Alignment.topCenter,
                   children: [
                     ...previousChildren,
-                    if (currentChild != null) currentChild,
+                    ?currentChild,
                   ],
                 ),
                 child: provider.isLoading

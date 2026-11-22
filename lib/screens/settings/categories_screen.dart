@@ -455,7 +455,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   alignment: Alignment.topCenter,
                   children: [
                     ...previousChildren,
-                    if (currentChild != null) currentChild,
+                    ?currentChild,
                   ],
                 ),
                 child: ListView.separated(

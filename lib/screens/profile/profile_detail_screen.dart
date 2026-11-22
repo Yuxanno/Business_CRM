@@ -372,14 +372,3 @@ class _AccountDetailItem extends StatelessWidget {
     );
   }
 }
-
-// Kept for hot-reload compatibility
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
-}

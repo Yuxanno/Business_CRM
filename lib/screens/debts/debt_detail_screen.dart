@@ -127,8 +127,10 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
             if (cents == null || cents <= 0) return;
             Navigator.of(context, rootNavigator: true).pop();
             HapticFeedback.mediumImpact();
+            final debtProvider = context.read<DebtProvider>();
+            final dashboardProvider = context.read<DashboardProvider>();
             const uuid = Uuid();
-            await context.read<DebtProvider>().recordPayment(
+            await debtProvider.recordPayment(
                   debtId: _debt!.id,
                   amountCents: cents.clamp(0, remainingCents),
                   paymentId: uuid.v4(),
@@ -137,9 +139,7 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
                       ? notesCtrl.text.trim()
                       : null,
                 );
-            if (mounted) {
-              context.read<DashboardProvider>().reload();
-            }
+            dashboardProvider.reload();
             _load();
           },
         ),

@@ -153,7 +153,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   alignment: Alignment.topCenter,
                   children: [
                     ...previousChildren,
-                    if (currentChild != null) currentChild,
+                    ?currentChild,
                   ],
                 ),
                 child: provider.isLoading
@@ -250,11 +250,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               currency: currency,
                               onTap: () async {
                                 HapticFeedback.selectionClick();
+                                final orderProvider =
+                                    context.read<OrderProvider>();
+                                final customerProvider =
+                                    context.read<CustomerProvider>();
+                                final dashboardProvider =
+                                    context.read<DashboardProvider>();
                                 await context.push('/orders/${order.id}');
                                 if (mounted) {
-                                  context.read<OrderProvider>().load();
-                                  context.read<CustomerProvider>().load(silent: true);
-                                  context.read<DashboardProvider>().reload();
+                                  orderProvider.load();
+                                  customerProvider.load(silent: true);
+                                  dashboardProvider.reload();
                                 }
                               },
                               onEdit: () =>

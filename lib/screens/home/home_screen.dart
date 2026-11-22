@@ -289,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen>
                     alignment: Alignment.topCenter,
                     children: [
                       ...previousChildren,
-                      if (currentChild != null) currentChild,
+                      ?currentChild,
                     ],
                   ),
                   child: (dashboard.isLoading &&
@@ -1899,31 +1899,35 @@ class _ActivityFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _FilterChipPill(
-          label: context.tr('Все', 'All'),
-          count: allCount,
-          active: selected == _ActivityFilter.all,
-          onTap: () => onChanged(_ActivityFilter.all),
-        ),
-        const SizedBox(width: 8),
-        _FilterChipPill(
-          label: context.tr('Доходы', 'Income'),
-          count: incomeCount,
-          active: selected == _ActivityFilter.income,
-          accentColor: AppColors.income,
-          onTap: () => onChanged(_ActivityFilter.income),
-        ),
-        const SizedBox(width: 8),
-        _FilterChipPill(
-          label: context.tr('Расходы', 'Expenses'),
-          count: expenseCount,
-          active: selected == _ActivityFilter.expense,
-          accentColor: AppColors.expense,
-          onTap: () => onChanged(_ActivityFilter.expense),
-        ),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          _FilterChipPill(
+            label: context.tr('Все', 'All'),
+            count: allCount,
+            active: selected == _ActivityFilter.all,
+            onTap: () => onChanged(_ActivityFilter.all),
+          ),
+          const SizedBox(width: 8),
+          _FilterChipPill(
+            label: context.tr('Доходы', 'Income'),
+            count: incomeCount,
+            active: selected == _ActivityFilter.income,
+            accentColor: AppColors.income,
+            onTap: () => onChanged(_ActivityFilter.income),
+          ),
+          const SizedBox(width: 8),
+          _FilterChipPill(
+            label: context.tr('Расходы', 'Expenses'),
+            count: expenseCount,
+            active: selected == _ActivityFilter.expense,
+            accentColor: AppColors.expense,
+            onTap: () => onChanged(_ActivityFilter.expense),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2076,6 +2080,10 @@ class _ActivityTile extends StatelessWidget {
     final label =
         tx.description?.isNotEmpty == true ? tx.description! : catName;
     final iconData = _categoryIcon(tx.category, tx.linkedEntityType, isIncome);
+    final amountText = hideBalances
+        ? '•••• $currency'
+        : '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}';
+    final isLargeAmount = amountText.length > 13;
 
     return InkWell(
       onTap: () => context.go('/finance'),
@@ -2085,6 +2093,9 @@ class _ActivityTile extends StatelessWidget {
           vertical: 12,
         ),
         child: Row(
+          crossAxisAlignment: isLargeAmount
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.center,
           children: [
             // Category-aware icon badge
             Container(
@@ -2118,49 +2129,75 @@ class _ActivityTile extends StatelessWidget {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colors.surfaceSecondary,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          catName,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: colors.textSecondary,
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceSecondary,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            catName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: colors.textSecondary,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        DateHelper.relativeDate(tx.date),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colors.textMuted,
+                      Flexible(
+                        child: Text(
+                          DateHelper.relativeDate(tx.date),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colors.textMuted,
+                          ),
                         ),
                       ),
                     ],
                   ),
+                  if (isLargeAmount) ...[
+                    const SizedBox(height: 5),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        amountText,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: tileColor,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            Text(
-              hideBalances
-                  ? '•••• $currency'
-                  : '$sign${FinancialCalculator.formatCents(tx.amountCents, currency: currency)}',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: tileColor,
-                fontFeatures: const [FontFeature.tabularFigures()],
+            if (!isLargeAmount) ...[
+              const SizedBox(width: 8),
+              Text(
+                amountText,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: tileColor,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

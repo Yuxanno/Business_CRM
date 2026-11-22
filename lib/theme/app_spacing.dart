@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 /// Spacing constants for consistent UI
 class AppSpacing {
   AppSpacing._();

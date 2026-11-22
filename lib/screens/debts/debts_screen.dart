@@ -169,8 +169,10 @@ class _DebtsScreenState extends State<DebtsScreen> {
             if (cents == null || cents <= 0) return;
             Navigator.of(context, rootNavigator: true).pop();
             HapticFeedback.mediumImpact();
+            final debtProvider = context.read<DebtProvider>();
+            final dashboardProvider = context.read<DashboardProvider>();
             const uuid = Uuid();
-            await context.read<DebtProvider>().recordPayment(
+            await debtProvider.recordPayment(
                   debtId: debt.id,
                   amountCents: cents.clamp(0, remainingCents),
                   paymentId: uuid.v4(),
@@ -179,9 +181,7 @@ class _DebtsScreenState extends State<DebtsScreen> {
                       ? notesCtrl.text.trim()
                       : null,
                 );
-            if (mounted) {
-              context.read<DashboardProvider>().reload();
-            }
+            dashboardProvider.reload();
           },
         ),
         body: ListView(
@@ -560,7 +560,7 @@ class _DebtsScreenState extends State<DebtsScreen> {
                   alignment: Alignment.topCenter,
                   children: [
                     ...previousChildren,
-                    if (currentChild != null) currentChild,
+                    ?currentChild,
                   ],
                 ),
                 child: provider.isLoading
@@ -853,35 +853,48 @@ class _DebtsTopBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  context.tr('Долги', 'Debts'),
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.6,
-                    color: colors.textPrimary,
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            context.tr('Долги', 'Debts'),
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.6,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (totalCount > 0) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: colors.primary,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '$totalCount',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (totalCount > 0) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: colors.primary,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '$totalCount',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-                const Spacer(),
+                const SizedBox(width: 8),
                 GestureDetector(
                   onTap: onToggleSearch,
                   child: Container(
@@ -1169,45 +1182,48 @@ class _DebtSourceStrip extends StatelessWidget {
                     width: selected == items[i].filter ? 1.4 : 1.0,
                   ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      items[i].icon,
-                      size: 13,
-                      color: selected == items[i].filter
-                          ? colors.primary
-                          : colors.textMuted,
-                    ),
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        items[i].label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: selected == items[i].filter
-                              ? FontWeight.w700
-                              : FontWeight.w600,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          items[i].icon,
+                          size: 13,
                           color: selected == items[i].filter
                               ? colors.primary
-                              : colors.textPrimary,
+                              : colors.textMuted,
                         ),
-                      ),
+                        const SizedBox(width: 5),
+                        Text(
+                          items[i].label,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: selected == items[i].filter
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                            color: selected == items[i].filter
+                                ? colors.primary
+                                : colors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${items[i].count}',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: selected == items[i].filter
+                                ? colors.primary
+                                : colors.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${items[i].count}',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                        color: selected == items[i].filter
-                            ? colors.primary
-                            : colors.textMuted,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
