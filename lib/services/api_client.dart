@@ -24,7 +24,7 @@ class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
 
-  static const _requestTimeout = Duration(seconds: 25);
+  static const _requestTimeout = Duration(seconds: 12);
   static const String _defaultRenderUrl = 'https://business-crm-da1s.onrender.com';
 
   final http.Client _client = http.Client();
@@ -47,12 +47,12 @@ class ApiClient {
     return _defaultRenderUrl;
   }
 
-  /// Sends a lightweight /health ping every 5 seconds so the Render backend stays warm.
+  /// Sends a lightweight /health ping every 4 minutes so the backend session stays warm without draining battery.
   void startKeepAlive() {
     if (_keepAliveTimer != null) return;
     _pingHealth();
     _keepAliveTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(minutes: 4),
       (_) => _pingHealth(),
     );
   }
@@ -95,6 +95,7 @@ class ApiClient {
     }
     return {
       'Content-Type': 'application/json',
+      'Accept-Encoding': 'gzip',
       'Accept-Language': AppTr.isEn ? 'en' : 'ru',
       if (_cachedToken != null && _cachedToken!.isNotEmpty)
         'Authorization': 'Bearer $_cachedToken',
@@ -105,10 +106,10 @@ class ApiClient {
   /// Resources whose cached GET responses may change after a write to [path].
   /// Unknown paths fall back to dropping everything (safe default).
   static const _dependents = <String, List<String>>{
-    '/api/orders': ['/api/orders', '/api/customers', '/api/dashboard', '/api/transactions', '/api/debts'],
-    '/api/customers': ['/api/customers', '/api/orders', '/api/dashboard', '/api/debts'],
-    '/api/transactions': ['/api/transactions', '/api/dashboard', '/api/orders', '/api/customers', '/api/debts'],
-    '/api/debts': ['/api/debts', '/api/transactions', '/api/dashboard', '/api/customers'],
+    '/api/orders': ['/api/orders', '/api/customers', '/api/dashboard', '/api/transactions', '/api/debts', '/api/bootstrap'],
+    '/api/customers': ['/api/customers', '/api/orders', '/api/dashboard', '/api/debts', '/api/bootstrap'],
+    '/api/transactions': ['/api/transactions', '/api/dashboard', '/api/orders', '/api/customers', '/api/debts', '/api/bootstrap'],
+    '/api/debts': ['/api/debts', '/api/transactions', '/api/dashboard', '/api/customers', '/api/bootstrap'],
   };
 
   void _invalidateFor(String path) {
@@ -155,6 +156,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$path');
     final headers = <String, String>{
       'Content-Type': contentType,
+      'Accept-Encoding': 'gzip',
       'Accept-Language': AppTr.isEn ? 'en' : 'ru',
       if (_cachedToken != null && _cachedToken!.isNotEmpty)
         'Authorization': 'Bearer $_cachedToken',

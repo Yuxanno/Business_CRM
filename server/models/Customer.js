@@ -18,5 +18,6 @@ const customerSchema = new mongoose.Schema(
 );
 
 customerSchema.index({ userId: 1, name: 1 });
+customerSchema.index({ userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Customer', customerSchema);

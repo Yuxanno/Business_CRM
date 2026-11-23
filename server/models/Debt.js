@@ -32,6 +32,7 @@ const debtSchema = new mongoose.Schema(
 debtSchema.index({ userId: 1, createdAt: -1 });
 debtSchema.index({ userId: 1, direction: 1, createdAt: -1 });
 debtSchema.index({ userId: 1, status: 1 });
+debtSchema.index({ userId: 1, direction: 1, status: 1 });
 debtSchema.index({ userId: 1, customerId: 1 });
 
 const debtPaymentSchema = new mongoose.Schema(

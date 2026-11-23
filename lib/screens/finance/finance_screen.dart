@@ -280,51 +280,36 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
             // ── 3. Scrollable Transactions List ───────────────────────────
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 280),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                layoutBuilder: (currentChild, previousChildren) => Stack(
-                  alignment: Alignment.topCenter,
-                  children: [
-                    ...previousChildren,
-                    ?currentChild,
-                  ],
-                ),
-                child: provider.isLoading
-                    ? const Align(
-                        key: ValueKey('skeleton'),
-                        alignment: Alignment.topCenter,
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            _kPagePadding,
-                            AppSpacing.md,
-                            _kPagePadding,
-                            100,
-                          ),
-                          child: AppSkeletonList(count: 4),
+              child: provider.isLoading
+                  ? const Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          _kPagePadding,
+                          AppSpacing.md,
+                          _kPagePadding,
+                          100,
                         ),
-                      )
-                    : RefreshIndicator(
-                        key: const ValueKey('content'),
-                        color: colors.primary,
-                        backgroundColor: colors.surface,
-                        onRefresh: _reload,
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            if (notification.metrics.pixels >=
-                                    notification.metrics.maxScrollExtent - 320 &&
-                                provider.hasMore &&
-                                !provider.isLoadingMore) {
-                              provider.loadMore();
-                            }
-                            return false;
-                          },
-                          child: CustomScrollView(
-                            physics: const AlwaysScrollableScrollPhysics(
-                              parent: BouncingScrollPhysics(),
-                            ),
-                            slivers: [
+                        child: AppSkeletonList(count: 4),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      color: colors.primary,
+                      backgroundColor: colors.surface,
+                      onRefresh: _reload,
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (notification) {
+                          if (notification.metrics.pixels >=
+                                  notification.metrics.maxScrollExtent - 320 &&
+                              provider.hasMore &&
+                              !provider.isLoadingMore) {
+                            provider.loadMore();
+                          }
+                          return false;
+                        },
+                        child: CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
 
               // ── 4. Transactions List or Empty State ───────────────────────
               if (filteredTx.isEmpty)
@@ -446,7 +431,6 @@ class _FinanceScreenState extends State<FinanceScreen> {
                   ),
                 ),
               ),
-            ),
             ),
           ],
         ),
@@ -1145,10 +1129,11 @@ class _GroupedTransactionsSliver extends StatelessWidget {
     }
     final keys = grouped.keys.toList();
 
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (ctx, i) {
-          final dateKey = keys[i];
+    return SliverList.builder(
+      addAutomaticKeepAlives: false,
+      itemCount: keys.length,
+      itemBuilder: (ctx, i) {
+        final dateKey = keys[i];
           final dateObj = dateMap[dateKey]!;
           final txs = grouped[dateKey]!;
 
@@ -1264,9 +1249,7 @@ class _GroupedTransactionsSliver extends StatelessWidget {
             ),
             ),
           );
-        },
-        childCount: keys.length,
-      ),
+      },
     );
   }
 }

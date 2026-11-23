@@ -16,7 +16,10 @@ router.get(
     const userId = String(req.user._id);
     const cacheKey = `u:${userId}:dashboard:summary`;
     const cached = dataCache.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) {
+      res.set('Cache-Control', 'private, max-age=15');
+      return res.json(cached);
+    }
 
     const [activeOrdersCount, totalCustomersCount, debtAgg] = await Promise.all([
       Order.countDocuments({
@@ -57,6 +60,7 @@ router.get(
       payableCents,
     };
     dataCache.set(cacheKey, payload, 30000);
+    res.set('Cache-Control', 'private, max-age=15');
     res.json(payload);
   })
 );
@@ -77,7 +81,10 @@ router.get(
 
     const cacheKey = `u:${userId}:dashboard:${year}:${month}:${tz}`;
     const cached = dataCache.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) {
+      res.set('Cache-Control', 'private, max-age=15');
+      return res.json(cached);
+    }
 
     const start = new Date(Date.UTC(year, month - 1, 1) - tz * 60000);
     const end = new Date(Date.UTC(year, month, 1) - tz * 60000);
@@ -170,6 +177,7 @@ router.get(
     };
 
     dataCache.set(cacheKey, payload, 30000);
+    res.set('Cache-Control', 'private, max-age=15');
     res.json(payload);
   })
 );

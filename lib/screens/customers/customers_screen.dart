@@ -151,30 +151,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
             // ── 3. Customer List ──────────────────────────────────────────
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 280),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                layoutBuilder: (currentChild, previousChildren) => Stack(
-                  alignment: Alignment.topCenter,
-                  children: [
-                    ...previousChildren,
-                    ?currentChild,
-                  ],
-                ),
-                child: provider.isLoading
-                    ? const Align(
-                        key: ValueKey('skeleton'),
-                        alignment: Alignment.topCenter,
-                        child: Padding(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: _kPagePadding),
-                          child: AppSkeletonList(count: 5),
-                        ),
-                      )
-                    : KeyedSubtree(
-                        key: const ValueKey('content'),
-                        child: filtered.isEmpty
+              child: provider.isLoading
+                  ? const Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: _kPagePadding),
+                        child: AppSkeletonList(count: 5),
+                      ),
+                    )
+                  : filtered.isEmpty
                       ? AppEmptyState(
                           icon: Icons.people_outline_rounded,
                           title: _searchActive && _searchCtrl.text.isNotEmpty
@@ -235,77 +221,94 @@ class _CustomersScreenState extends State<CustomersScreen> {
                               }
                               return false;
                             },
-                            child: ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(
-                                parent: BouncingScrollPhysics(),
-                              ),
-                              padding: const EdgeInsets.fromLTRB(
-                                _kPagePadding,
-                                4,
-                                _kPagePadding,
-                                100,
-                              ),
-                              itemCount: filtered.length +
-                                  (provider.isLoadingMore ? 1 : 0),
-                              itemBuilder: (ctx, i) {
-                                if (i >= filtered.length) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
+                            child: CustomScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              slivers: [
+                                SliverPadding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    _kPagePadding,
+                                    4,
+                                    _kPagePadding,
+                                    100,
+                                  ),
+                                  sliver: SliverPrototypeExtentList.builder(
+                                    prototypeItem: Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 10),
+                                      child: _ModernCustomerCard(
+                                        customer: filtered.first,
+                                        orderDebtCents: 0,
+                                        extraDebtCents: 0,
+                                        debtsCount: 0,
+                                        currency: currency,
+                                        onTap: () {},
+                                        onEdit: () {},
+                                        onDelete: () {},
+                                      ),
                                     ),
-                                    child: Center(
-                                      child: SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.2,
-                                          color: colors.primary,
+                                    itemCount: filtered.length,
+                                    itemBuilder: (ctx, i) {
+                                      final c = filtered[i];
+                                      final extraDebt = debtProvider
+                                          .remainingDebtForCustomer(
+                                              c.id, c.name);
+                                      final debtsCount = debtProvider
+                                          .debtsForCustomer(c.id, c.name)
+                                          .length;
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 10),
+                                        child: RepaintBoundary(
+                                          child: _ModernCustomerCard(
+                                            customer: c,
+                                            orderDebtCents: orderDebtFor(c),
+                                            extraDebtCents: extraDebt,
+                                            debtsCount: debtsCount,
+                                            currency: currency,
+                                            onTap: () {
+                                              HapticFeedback.selectionClick();
+                                              context.go(
+                                                  '/profile/customers/${c.id}');
+                                            },
+                                            onEdit: () async {
+                                              HapticFeedback.selectionClick();
+                                              await context.push(
+                                                '/profile/customers/${c.id}/edit',
+                                              );
+                                              if (context.mounted) {
+                                                context
+                                                    .read<CustomerProvider>()
+                                                    .load();
+                                              }
+                                            },
+                                            onDelete: () =>
+                                                _confirmDelete(context, c),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                if (provider.isLoadingMore)
+                                  SliverToBoxAdapter(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(bottom: 36),
+                                      child: Center(
+                                        child: SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.2,
+                                            color: colors.primary,
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  );
-                                }
-                                final c = filtered[i];
-                                final extraDebt = debtProvider
-                                    .remainingDebtForCustomer(c.id, c.name);
-                                final debtsCount = debtProvider
-                                    .debtsForCustomer(c.id, c.name)
-                                    .length;
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: RepaintBoundary(
-                                    child: _ModernCustomerCard(
-                                      customer: c,
-                                      orderDebtCents: orderDebtFor(c),
-                                      extraDebtCents: extraDebt,
-                                      debtsCount: debtsCount,
-                                      currency: currency,
-                                      onTap: () {
-                                        HapticFeedback.selectionClick();
-                                        context.go('/profile/customers/${c.id}');
-                                      },
-                                      onEdit: () async {
-                                        HapticFeedback.selectionClick();
-                                        await context.push(
-                                          '/profile/customers/${c.id}/edit',
-                                        );
-                                        if (context.mounted) {
-                                          context
-                                              .read<CustomerProvider>()
-                                              .load();
-                                        }
-                                      },
-                                      onDelete: () =>
-                                          _confirmDelete(context, c),
-                                    ),
                                   ),
-                                );
-                              },
+                              ],
                             ),
                           ),
                         ),
-                      ),
-              ),
             ),
           ],
         ),

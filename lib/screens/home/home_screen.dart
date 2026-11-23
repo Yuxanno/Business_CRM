@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../services/notification_service.dart';
-import '../../components/notifications_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import '../../services/notification_service.dart';
+import '../../components/notifications_sheet.dart';
 import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -30,38 +30,25 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _entranceController;
+class _HomeScreenState extends State<HomeScreen> {
   _ActivityFilter _activityFilter = _ActivityFilter.all;
   bool _hideBalances = false;
 
   @override
   void initState() {
     super.initState();
-    _entranceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 480),
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadHomeAndPrefetch();
-      _entranceController.forward();
     });
   }
 
   Future<void> _loadHomeAndPrefetch() async {
     if (!mounted) return;
-    // Single batched request loads user + dashboard + page 1 of all 4 tabs at once
+    // Hydrates cache in parallel and runs a single batched /api/bootstrap request
     await BootstrapService.loadAll(context);
     if (mounted) {
       await NotificationService.instance.promptPermissionIfNeeded(context);
     }
-  }
-
-  @override
-  void dispose() {
-    _entranceController.dispose();
-    super.dispose();
   }
 
   Future<void> _pushAndReload(String route) async {
@@ -75,19 +62,6 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final dashboard = context.watch<DashboardProvider>();
-    final settings = context.watch<SettingsProvider>();
-    final currency = settings.currency;
-
-    final filteredActivity = switch (_activityFilter) {
-      _ActivityFilter.all => dashboard.recentActivity,
-      _ActivityFilter.income => dashboard.recentActivity
-          .where((t) => t.type == TransactionType.income)
-          .toList(),
-      _ActivityFilter.expense => dashboard.recentActivity
-          .where((t) => t.type == TransactionType.expense)
-          .toList(),
-    };
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -100,49 +74,37 @@ class _HomeScreenState extends State<HomeScreen>
             await context.read<DashboardProvider>().reload();
           },
           child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
+            physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               // ── 1. Modern Header ──────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: _StaggeredEntrance(
-                  controller: _entranceController,
-                  index: 0,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      _kHomePadding,
-                      AppSpacing.md,
-                      _kHomePadding,
-                      0,
-                    ),
-                    child: _Header(dashboard: dashboard),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    _kHomePadding,
+                    AppSpacing.md,
+                    _kHomePadding,
+                    0,
                   ),
+                  child: _Header(),
                 ),
               ),
 
               // ── 2. Hero Financial Bento Card ──────────────────────────────
               SliverToBoxAdapter(
-                child: _StaggeredEntrance(
-                  controller: _entranceController,
-                  index: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      _kHomePadding,
-                      AppSpacing.md,
-                      _kHomePadding,
-                      0,
-                    ),
-                    child: RepaintBoundary(
-                      child: _HeroFinancialCard(
-                        dashboard: dashboard,
-                        currency: currency,
-                        hideBalances: _hideBalances,
-                        onTogglePrivacy: () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _hideBalances = !_hideBalances);
-                        },
-                      ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    _kHomePadding,
+                    AppSpacing.md,
+                    _kHomePadding,
+                    0,
+                  ),
+                  child: RepaintBoundary(
+                    child: _HeroFinancialCard(
+                      hideBalances: _hideBalances,
+                      onTogglePrivacy: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _hideBalances = !_hideBalances);
+                      },
                     ),
                   ),
                 ),
@@ -150,244 +112,61 @@ class _HomeScreenState extends State<HomeScreen>
 
               // ── 3. Quick Actions Dock ─────────────────────────────────────
               SliverToBoxAdapter(
-                child: _StaggeredEntrance(
-                  controller: _entranceController,
-                  index: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      _kHomePadding,
-                      AppSpacing.md,
-                      _kHomePadding,
-                      0,
-                    ),
-                    child: _QuickActionsDock(onAction: _pushAndReload),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    _kHomePadding,
+                    AppSpacing.md,
+                    _kHomePadding,
+                    0,
                   ),
+                  child: _QuickActionsDock(onAction: _pushAndReload),
                 ),
               ),
 
               // ── 4. Bento Business Overview ────────────────────────────────
               SliverToBoxAdapter(
-                child: _StaggeredEntrance(
-                  controller: _entranceController,
-                  index: 3,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      _kHomePadding,
-                      AppSpacing.lg,
-                      _kHomePadding,
-                      0,
-                    ),
-                    child: _BentoStatsSection(
-                      dashboard: dashboard,
-                      currency: currency,
-                      hideBalances: _hideBalances,
-                    ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    _kHomePadding,
+                    AppSpacing.lg,
+                    _kHomePadding,
+                    0,
+                  ),
+                  child: _BentoStatsSection(
+                    hideBalances: _hideBalances,
                   ),
                 ),
               ),
 
               // ── 5. Month Dynamics Chart ───────────────────────────────────
-              if (dashboard.chartData.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: _StaggeredEntrance(
-                    controller: _entranceController,
-                    index: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        _kHomePadding,
-                        AppSpacing.lg,
-                        _kHomePadding,
-                        0,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _SectionHeader(
-                            title: context.tr('Динамика месяца', 'Monthly dynamics'),
-                            subtitle: context.tr(
-                              'Поток средств по дням',
-                              'Daily cash flow',
-                            ),
-                            actionLabel: context.tr('Отчёт', 'Report'),
-                            actionIcon: Icons.analytics_outlined,
-                            onAction: () => context.go(
-                              '/profile/reports/${dashboard.year}/${dashboard.month}',
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          RepaintBoundary(
-                            child: AppCard(
-                              padding: const EdgeInsets.all(AppSpacing.md),
-                              radius: AppRadius.cardLarge,
-                              child: FinanceBarChart(
-                                dailyData: dashboard.chartData,
-                                year: dashboard.year,
-                                month: dashboard.month,
-                                currency: currency,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+              const SliverToBoxAdapter(
+                child: _MonthDynamicsChartSection(),
+              ),
 
-              // ── 6. Recent Activity Section ────────────────────────────────
+              // ── 6. Recent Activity Section Header & Filter ────────────────
               SliverToBoxAdapter(
-                child: _StaggeredEntrance(
-                  controller: _entranceController,
-                  index: 5,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      _kHomePadding,
-                      AppSpacing.lg,
-                      _kHomePadding,
-                      AppSpacing.sm,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _SectionHeader(
-                          title: context.tr(
-                            'Последние операции',
-                            'Recent transactions',
-                          ),
-                          actionLabel: context.tr('Все', 'All'),
-                          onAction: () => context.go('/finance'),
-                        ),
-                        if (dashboard.recentActivity.isNotEmpty) ...[
-                          const SizedBox(height: AppSpacing.sm),
-                          _ActivityFilterBar(
-                            selected: _activityFilter,
-                            allCount: dashboard.recentActivity.length,
-                            incomeCount: dashboard.recentActivity
-                                .where((t) => t.type == TransactionType.income)
-                                .length,
-                            expenseCount: dashboard.recentActivity
-                                .where((t) => t.type == TransactionType.expense)
-                                .length,
-                            onChanged: (filter) {
-                              HapticFeedback.selectionClick();
-                              setState(() => _activityFilter = filter);
-                            },
-                          ),
-                        ],
-                      ],
-                    ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    _kHomePadding,
+                    AppSpacing.lg,
+                    _kHomePadding,
+                    AppSpacing.sm,
+                  ),
+                  child: _RecentActivityHeader(
+                    selectedFilter: _activityFilter,
+                    onFilterChanged: (filter) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _activityFilter = filter);
+                    },
                   ),
                 ),
               ),
 
               // ── 7. Activity List Body ─────────────────────────────────────
               SliverToBoxAdapter(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  layoutBuilder: (currentChild, previousChildren) => Stack(
-                    alignment: Alignment.topCenter,
-                    children: [
-                      ...previousChildren,
-                      ?currentChild,
-                    ],
-                  ),
-                  child: (dashboard.isLoading &&
-                          dashboard.recentActivity.isEmpty)
-                      ? const Padding(
-                          key: ValueKey('activity-skeleton'),
-                          padding:
-                              EdgeInsets.symmetric(horizontal: _kHomePadding),
-                          child: AppSkeletonList(count: 3),
-                        )
-                      : dashboard.recentActivity.isEmpty
-                          ? Padding(
-                              key: const ValueKey('activity-empty'),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: _kHomePadding),
-                              child: AppEmptyState(
-                                icon: Icons.receipt_long_outlined,
-                                title: context.tr(
-                                  'За этот месяц операций нет',
-                                  'No transactions this month',
-                                ),
-                                subtitle: context.tr(
-                                  'Добавьте первый доход или расход с помощью быстрых кнопок выше',
-                                  'Add your first income or expense using the quick actions above',
-                                ),
-                                actionLabel: context.tr(
-                                  'Открыть Деньги',
-                                  'Open Finance',
-                                ),
-                                onAction: () => context.go('/finance'),
-                              ),
-                            )
-                          : filteredActivity.isEmpty
-                              ? Padding(
-                                  key: ValueKey(
-                                      'activity-filtered-empty-${_activityFilter.name}'),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: _kHomePadding,
-                                    vertical: AppSpacing.lg,
-                                  ),
-                                  child: AppCard(
-                                    radius: AppRadius.cardLarge,
-                                    child: Center(
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: AppSpacing.md),
-                                        child: Text(
-                                          _activityFilter ==
-                                                  _ActivityFilter.income
-                                              ? context.tr(
-                                                  'Нет операций дохода в списке последних',
-                                                  'No income transactions in recent activity',
-                                                )
-                                              : context.tr(
-                                                  'Нет операций расхода в списке последних',
-                                                  'No expense transactions in recent activity',
-                                                ),
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: colors.textMuted,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : Padding(
-                                  key: ValueKey(
-                                      'activity-list-${_activityFilter.name}'),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: _kHomePadding),
-                                  child: AppCard(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 4),
-                                    radius: AppRadius.cardLarge,
-                                    child: Column(
-                                      children: [
-                                        for (int i = 0;
-                                            i < filteredActivity.length;
-                                            i++) ...[
-                                          if (i > 0)
-                                            Divider(
-                                              height: 1,
-                                              indent: 64,
-                                              endIndent: AppSpacing.md,
-                                              color: colors.divider
-                                                  .withValues(alpha: 0.7),
-                                            ),
-                                          _ActivityTile(
-                                            tx: filteredActivity[i],
-                                            currency: currency,
-                                            hideBalances: _hideBalances,
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                child: _RecentActivityBody(
+                  activityFilter: _activityFilter,
+                  hideBalances: _hideBalances,
                 ),
               ),
 
@@ -402,36 +181,230 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// ─── Lightweight Staggered Entrance Wrapper ───────────────────────────────────
+// ─── Month Dynamics Chart Section (Selector-isolated) ─────────────────────────
 
-class _StaggeredEntrance extends StatelessWidget {
-  const _StaggeredEntrance({
-    required this.controller,
-    required this.index,
-    required this.child,
-  });
-
-  final AnimationController controller;
-  final int index;
-  final Widget child;
+class _MonthDynamicsChartSection extends StatelessWidget {
+  const _MonthDynamicsChartSection();
 
   @override
   Widget build(BuildContext context) {
-    final start = (index * 0.06).clamp(0.0, 0.36);
-    final end = (start + 0.64).clamp(0.0, 1.0);
-    final curved = CurvedAnimation(
-      parent: controller,
-      curve: Interval(start, end, curve: Curves.easeOutCubic),
+    final chartData = context.select<DashboardProvider, List<Map<String, dynamic>>>(
+      (d) => d.chartData,
+    );
+    if (chartData.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final year = context.select<DashboardProvider, int>((d) => d.year);
+    final month = context.select<DashboardProvider, int>((d) => d.month);
+    final currency = context.select<SettingsProvider, String>((s) => s.currency);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        _kHomePadding,
+        AppSpacing.lg,
+        _kHomePadding,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            title: context.tr('Динамика месяца', 'Monthly dynamics'),
+            subtitle: context.tr(
+              'Поток средств по дням',
+              'Daily cash flow',
+            ),
+            actionLabel: context.tr('Отчёт', 'Report'),
+            actionIcon: Icons.analytics_outlined,
+            onAction: () => context.go(
+              '/profile/reports/$year/$month',
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          RepaintBoundary(
+            child: AppCard(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              radius: AppRadius.cardLarge,
+              child: FinanceBarChart(
+                dailyData: chartData,
+                year: year,
+                month: month,
+                currency: currency,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Recent Activity Header & Body (Selector-isolated, zero AnimatedSwitcher) ─
+
+class _RecentActivityHeader extends StatelessWidget {
+  const _RecentActivityHeader({
+    required this.selectedFilter,
+    required this.onFilterChanged,
+  });
+
+  final _ActivityFilter selectedFilter;
+  final ValueChanged<_ActivityFilter> onFilterChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final recentActivity =
+        context.select<DashboardProvider, List<AppTransaction>>(
+      (d) => d.recentActivity,
     );
 
-    return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.02),
-          end: Offset.zero,
-        ).animate(curved),
-        child: child,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          title: context.tr(
+            'Последние операции',
+            'Recent transactions',
+          ),
+          actionLabel: context.tr('Все', 'All'),
+          onAction: () => context.go('/finance'),
+        ),
+        if (recentActivity.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _ActivityFilterBar(
+            selected: selectedFilter,
+            allCount: recentActivity.length,
+            incomeCount: recentActivity
+                .where((t) => t.type == TransactionType.income)
+                .length,
+            expenseCount: recentActivity
+                .where((t) => t.type == TransactionType.expense)
+                .length,
+            onChanged: onFilterChanged,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _RecentActivityBody extends StatelessWidget {
+  const _RecentActivityBody({
+    required this.activityFilter,
+    required this.hideBalances,
+  });
+
+  final _ActivityFilter activityFilter;
+  final bool hideBalances;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final isLoading =
+        context.select<DashboardProvider, bool>((d) => d.isLoading);
+    final recentActivity =
+        context.select<DashboardProvider, List<AppTransaction>>(
+      (d) => d.recentActivity,
+    );
+    final currency =
+        context.select<SettingsProvider, String>((s) => s.currency);
+
+    if (isLoading && recentActivity.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: _kHomePadding),
+        child: AppSkeletonList(count: 3),
+      );
+    }
+
+    if (recentActivity.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: _kHomePadding),
+        child: AppEmptyState(
+          icon: Icons.receipt_long_outlined,
+          title: context.tr(
+            'За этот месяц операций нет',
+            'No transactions this month',
+          ),
+          subtitle: context.tr(
+            'Добавьте первый доход или расход с помощью быстрых кнопок выше',
+            'Add your first income or expense using the quick actions above',
+          ),
+          actionLabel: context.tr(
+            'Открыть Деньги',
+            'Open Finance',
+          ),
+          onAction: () => context.go('/finance'),
+        ),
+      );
+    }
+
+    final filteredActivity = switch (activityFilter) {
+      _ActivityFilter.all => recentActivity,
+      _ActivityFilter.income => recentActivity
+          .where((t) => t.type == TransactionType.income)
+          .toList(),
+      _ActivityFilter.expense => recentActivity
+          .where((t) => t.type == TransactionType.expense)
+          .toList(),
+    };
+
+    if (filteredActivity.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: _kHomePadding,
+          vertical: AppSpacing.lg,
+        ),
+        child: AppCard(
+          radius: AppRadius.cardLarge,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Text(
+                activityFilter == _ActivityFilter.income
+                    ? context.tr(
+                        'Нет операций дохода в списке последних',
+                        'No income transactions in recent activity',
+                      )
+                    : context.tr(
+                        'Нет операций расхода в списке последних',
+                        'No expense transactions in recent activity',
+                      ),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colors.textMuted,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: _kHomePadding),
+      child: RepaintBoundary(
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          radius: AppRadius.cardLarge,
+          child: Column(
+            children: [
+              for (int i = 0; i < filteredActivity.length; i++) ...[
+                if (i > 0)
+                  Divider(
+                    height: 1,
+                    indent: 64,
+                    endIndent: AppSpacing.md,
+                    color: colors.divider.withValues(alpha: 0.7),
+                  ),
+                _ActivityTile(
+                  tx: filteredActivity[i],
+                  currency: currency,
+                  hideBalances: hideBalances,
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -476,7 +449,7 @@ class _ScaleTapState extends State<_ScaleTap> {
   }
 }
 
-// ─── Smooth Animated Money Text ───────────────────────────────────────────────
+// ─── Zero-Overhead Money Text (no per-frame Ticker) ───────────────────────────
 
 class _AnimatedMoneyText extends StatelessWidget {
   const _AnimatedMoneyText({
@@ -499,18 +472,11 @@ class _AnimatedMoneyText extends StatelessWidget {
       return Text('•••••• $currency', style: style);
     }
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: cents.toDouble()),
-      duration: const Duration(milliseconds: 340),
-      curve: Curves.easeOutCubic,
-      builder: (context, val, _) {
-        final formatted = FinancialCalculator.formatCents(
-          val.round(),
-          currency: currency,
-        );
-        return Text('$prefix$formatted', style: style);
-      },
+    final formatted = FinancialCalculator.formatCents(
+      cents,
+      currency: currency,
     );
+    return Text('$prefix$formatted', style: style);
   }
 }
 
@@ -605,8 +571,7 @@ class _SectionHeader extends StatelessWidget {
 // ─── Header ───────────────────────────────────────────────────────────────────
 
 class _Header extends StatelessWidget {
-  const _Header({required this.dashboard});
-  final DashboardProvider dashboard;
+  const _Header();
 
   IconData _greetingIcon() {
     final hour = DateTime.now().hour;
@@ -615,10 +580,10 @@ class _Header extends StatelessWidget {
     return Icons.nights_stay_rounded;
   }
 
-  void _shiftMonth(BuildContext context, int delta) {
+  void _shiftMonth(BuildContext context, int year, int month, int delta) {
     HapticFeedback.selectionClick();
-    var m = dashboard.month + delta;
-    var y = dashboard.year;
+    var m = month + delta;
+    var y = year;
     if (m > 12) {
       m = 1;
       y++;
@@ -626,20 +591,29 @@ class _Header extends StatelessWidget {
       m = 12;
       y--;
     }
-    dashboard.setMonth(y, m);
+    context.read<DashboardProvider>().setMonth(y, m);
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final settings = context.watch<SettingsProvider>();
-    final name = settings.settings.businessName.isNotEmpty
-        ? settings.settings.businessName
-        : settings.settings.ownerName.isNotEmpty
-            ? settings.settings.ownerName
+    final businessName = context.select<SettingsProvider, String>(
+      (s) => s.settings.businessName,
+    );
+    final ownerName = context.select<SettingsProvider, String>(
+      (s) => s.settings.ownerName,
+    );
+    final name = businessName.isNotEmpty
+        ? businessName
+        : ownerName.isNotEmpty
+            ? ownerName
             : context.tr('Мой бизнес', 'My business');
 
-    final selectedDate = DateTime(dashboard.year, dashboard.month);
+    final year = context.select<DashboardProvider, int>((d) => d.year);
+    final month = context.select<DashboardProvider, int>((d) => d.month);
+    final isRefreshing =
+        context.select<DashboardProvider, bool>((d) => d.isRefreshing);
+    final selectedDate = DateTime(year, month);
 
     return Row(
       children: [
@@ -815,7 +789,7 @@ class _Header extends StatelessWidget {
             children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _shiftMonth(context, -1),
+                onTap: () => _shiftMonth(context, year, month, -1),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Icon(
@@ -833,36 +807,27 @@ class _Header extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: dashboard.isRefreshing
-                            ? SizedBox(
-                                key: const ValueKey('month-loading'),
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: colors.primary,
-                                ),
-                              )
-                            : Icon(
-                                Icons.calendar_month_rounded,
-                                key: const ValueKey('month-icon'),
-                                size: 13,
+                      isRefreshing
+                          ? SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
                                 color: colors.primary,
                               ),
-                      ),
+                            )
+                          : Icon(
+                              Icons.calendar_month_rounded,
+                              size: 13,
+                              color: colors.primary,
+                            ),
                       const SizedBox(width: 4),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: Text(
-                          DateHelper.formatMonthYear(selectedDate),
-                          key: ValueKey('${dashboard.year}-${dashboard.month}'),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: colors.textPrimary,
-                          ),
+                      Text(
+                        DateHelper.formatMonthYear(selectedDate),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
                         ),
                       ),
                     ],
@@ -871,7 +836,7 @@ class _Header extends StatelessWidget {
               ),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _shiftMonth(context, 1),
+                onTap: () => _shiftMonth(context, year, month, 1),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Icon(
@@ -1017,8 +982,7 @@ class _Header extends StatelessWidget {
                         Navigator.pop(modalContext);
                         dashboard.setMonth(selectedYear, i + 1);
                       },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 160),
+                      child: Container(
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: selected
@@ -1058,24 +1022,28 @@ class _Header extends StatelessWidget {
 
 class _HeroFinancialCard extends StatelessWidget {
   const _HeroFinancialCard({
-    required this.dashboard,
-    required this.currency,
     required this.hideBalances,
     required this.onTogglePrivacy,
   });
 
-  final DashboardProvider dashboard;
-  final String currency;
   final bool hideBalances;
   final VoidCallback onTogglePrivacy;
 
   @override
   Widget build(BuildContext context) {
-    final net = dashboard.netCents;
-    final income = dashboard.incomeCents;
-    final expense = dashboard.expenseCents;
+    final income =
+        context.select<DashboardProvider, int>((d) => d.incomeCents);
+    final expense =
+        context.select<DashboardProvider, int>((d) => d.expenseCents);
+    final isRefreshing =
+        context.select<DashboardProvider, bool>((d) => d.isRefreshing);
+    final currency =
+        context.select<SettingsProvider, String>((s) => s.currency);
+
+    final net = income - expense;
     final totalFlow = income + expense;
-    final incomeShare = totalFlow > 0 ? (income / totalFlow).clamp(0.0, 1.0) : 0.5;
+    final incomeShare =
+        totalFlow > 0 ? (income / totalFlow).clamp(0.0, 1.0) : 0.5;
     final isPositive = net >= 0;
 
     final marginPct = income > 0
@@ -1113,202 +1081,184 @@ class _HeroFinancialCard extends StatelessWidget {
           children: [
             CustomPaint(
               painter: const _HeroDecorPainter(),
-              child: AnimatedOpacity(
-                opacity: dashboard.isRefreshing ? 0.65 : 1.0,
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                // Top status & privacy row
-                Row(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: netAccent.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: netAccent.withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: netAccent,
-                              shape: BoxShape.circle,
+                    // Top status & privacy row
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: netAccent.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: netAccent.withValues(alpha: 0.35),
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isPositive
-                                ? context.tr('Чистая прибыль', 'Net profit')
-                                : context.tr('Убыток месяца', 'Monthly loss'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: netAccent,
-                              letterSpacing: 0.2,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: netAccent,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                isPositive
+                                    ? context.tr('Чистая прибыль', 'Net profit')
+                                    : context.tr('Убыток месяца', 'Monthly loss'),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: netAccent,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (income > 0 && !hideBalances) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              '${marginPct >= 0 ? '+' : ''}${marginPct.toStringAsFixed(0)}% ${context.tr('маржа', 'margin')}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white.withValues(alpha: 0.8),
+                              ),
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                    if (income > 0 && !hideBalances) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${marginPct >= 0 ? '+' : ''}${marginPct.toStringAsFixed(0)}% ${context.tr('маржа', 'margin')}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.8),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: onTogglePrivacy,
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          hideBalances
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          size: 16,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Main Net Balance (Auto-scales so it never overflows)
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: _AnimatedMoneyText(
-                    cents: net.abs(),
-                    currency: currency,
-                    prefix: net < 0 ? '−' : (net > 0 ? '+' : ''),
-                    hide: hideBalances,
-                    style: const TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -1.2,
-                      height: 1.1,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Cashflow Split Progress Bar
-                TweenAnimationBuilder<double>(
-                  tween: Tween<double>(end: incomeShare),
-                  duration: const Duration(milliseconds: 550),
-                  curve: Curves.easeOutCubic,
-                  builder: (context, animatedShare, _) {
-                    return Column(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: SizedBox(
-                            height: 6,
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  flex: (animatedShare * 1000)
-                                      .round()
-                                      .clamp(1, 999),
-                                  child: Container(
-                                    color: const Color(0xFF34D399),
-                                  ),
-                                ),
-                                const SizedBox(width: 2),
-                                Expanded(
-                                  flex: ((1.0 - animatedShare) * 1000)
-                                      .round()
-                                      .clamp(1, 999),
-                                  child: Container(
-                                    color: totalFlow > 0
-                                        ? const Color(0xFFFB7185)
-                                        : Colors.white24,
-                                  ),
-                                ),
-                              ],
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: onTogglePrivacy,
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              hideBalances
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              size: 16,
+                              color: Colors.white70,
                             ),
                           ),
                         ),
                       ],
-                    );
-                  },
-                ),
+                    ),
 
-                const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                // Income & Expense Sub-cards (Zero overflow guaranteed)
-                Row(
-                  children: [
-                    Expanded(
-                      child: _HeroSubMetric(
-                        label: context.tr('Доходы', 'Income'),
-                        cents: income,
+                    // Main Net Balance (Auto-scales so it never overflows)
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: _AnimatedMoneyText(
+                        cents: net.abs(),
                         currency: currency,
-                        hideBalances: hideBalances,
-                        accentColor: const Color(0xFF34D399),
-                        icon: Icons.south_west_rounded,
-                        onTap: () => context.go('/finance'),
+                        prefix: net < 0 ? '−' : (net > 0 ? '+' : ''),
+                        hide: hideBalances,
+                        style: const TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -1.2,
+                          height: 1.1,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _HeroSubMetric(
-                        label: context.tr('Расходы', 'Expenses'),
-                        cents: expense,
-                        currency: currency,
-                        hideBalances: hideBalances,
-                        accentColor: const Color(0xFFFB7185),
-                        icon: Icons.north_east_rounded,
-                        onTap: () => context.go('/finance'),
+
+                    const SizedBox(height: 16),
+
+                    // Cashflow Split Progress Bar (direct flex, no ticker)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: SizedBox(
+                        height: 6,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: (incomeShare * 1000).round().clamp(1, 999),
+                              child: Container(
+                                color: const Color(0xFF34D399),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Expanded(
+                              flex: ((1.0 - incomeShare) * 1000)
+                                  .round()
+                                  .clamp(1, 999),
+                              child: Container(
+                                color: totalFlow > 0
+                                    ? const Color(0xFFFB7185)
+                                    : Colors.white24,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Income & Expense Sub-cards (Zero overflow guaranteed)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _HeroSubMetric(
+                            label: context.tr('Доходы', 'Income'),
+                            cents: income,
+                            currency: currency,
+                            hideBalances: hideBalances,
+                            accentColor: const Color(0xFF34D399),
+                            icon: Icons.south_west_rounded,
+                            onTap: () => context.go('/finance'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _HeroSubMetric(
+                            label: context.tr('Расходы', 'Expenses'),
+                            cents: expense,
+                            currency: currency,
+                            hideBalances: hideBalances,
+                            accentColor: const Color(0xFFFB7185),
+                            icon: Icons.north_east_rounded,
+                            onTap: () => context.go('/finance'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-            ),
-            if (dashboard.isRefreshing)
+            if (isRefreshing)
               const Positioned(
                 top: 0,
                 left: 0,
@@ -1556,18 +1506,24 @@ class _QuickActionBtn extends StatelessWidget {
 
 class _BentoStatsSection extends StatelessWidget {
   const _BentoStatsSection({
-    required this.dashboard,
-    required this.currency,
     required this.hideBalances,
   });
 
-  final DashboardProvider dashboard;
-  final String currency;
   final bool hideBalances;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final activeOrdersCount = context
+        .select<DashboardProvider, int>((d) => d.activeOrdersCount);
+    final totalCustomersCount = context
+        .select<DashboardProvider, int>((d) => d.totalCustomersCount);
+    final receivableCents = context
+        .select<DashboardProvider, int>((d) => d.receivableCents);
+    final payableCents = context
+        .select<DashboardProvider, int>((d) => d.payableCents);
+    final currency =
+        context.select<SettingsProvider, String>((s) => s.currency);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1585,7 +1541,7 @@ class _BentoStatsSection extends StatelessWidget {
                 icon: Icons.shopping_bag_outlined,
                 badgeText: context.tr('В работе', 'Active'),
                 title: context.tr('Заказы', 'Orders'),
-                value: '${dashboard.activeOrdersCount}',
+                value: '$activeOrdersCount',
                 accentColor: colors.primary,
                 onTap: () => context.go('/orders'),
               ),
@@ -1596,7 +1552,7 @@ class _BentoStatsSection extends StatelessWidget {
                 icon: Icons.people_alt_outlined,
                 badgeText: context.tr('База', 'Base'),
                 title: context.tr('Клиенты', 'Customers'),
-                value: '${dashboard.totalCustomersCount}',
+                value: '$totalCustomersCount',
                 accentColor: colors.income,
                 onTap: () => context.go('/profile/customers'),
               ),
@@ -1700,13 +1656,13 @@ class _BentoStatsSection extends StatelessWidget {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: _AnimatedMoneyText(
-                                cents: dashboard.receivableCents,
+                                cents: receivableCents,
                                 currency: currency,
                                 hide: hideBalances,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,
-                                  color: dashboard.receivableCents > 0
+                                  color: receivableCents > 0
                                       ? colors.warning
                                       : colors.textPrimary,
                                   fontFeatures: const [
@@ -1741,13 +1697,13 @@ class _BentoStatsSection extends StatelessWidget {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: _AnimatedMoneyText(
-                                cents: dashboard.payableCents,
+                                cents: payableCents,
                                 currency: currency,
                                 hide: hideBalances,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,
-                                  color: dashboard.payableCents > 0
+                                  color: payableCents > 0
                                       ? colors.expense
                                       : colors.textPrimary,
                                   fontFeatures: const [
@@ -1901,7 +1857,6 @@ class _ActivityFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
       child: Row(
         children: [
           _FilterChipPill(
@@ -1955,9 +1910,7 @@ class _FilterChipPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: active ? activeBg : colors.surface,
@@ -1969,20 +1922,16 @@ class _FilterChipPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutCubic,
+            Text(
+              label,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: active ? Colors.white : colors.textSecondary,
               ),
-              child: Text(label),
             ),
             const SizedBox(width: 6),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutCubic,
+            Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
               decoration: BoxDecoration(
                 color: active
@@ -1990,15 +1939,13 @@ class _FilterChipPill extends StatelessWidget {
                     : colors.surfaceSecondary,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
+              child: Text(
+                '$count',
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                   color: active ? Colors.white : colors.textMuted,
                 ),
-                child: Text('$count'),
               ),
             ),
           ],

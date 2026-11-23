@@ -72,8 +72,13 @@ class OrderProvider extends ChangeNotifier {
   }
 
   Future<void> hydrateFromCache() async {
-    _counts ??= await LocalCache.readMap('${_cacheKey}_counts');
-    final cached = await LocalCache.readMap(_cacheKey);
+    if (_hasLoadedOnce && _orders.isNotEmpty) return;
+    final results = await Future.wait([
+      LocalCache.readMap('${_cacheKey}_counts'),
+      LocalCache.readMap(_cacheKey),
+    ]);
+    _counts ??= results[0];
+    final cached = results[1];
     if (cached != null) {
       final rawItems = (cached['items'] as List?) ?? const [];
       _orders = rawItems
@@ -81,6 +86,7 @@ class OrderProvider extends ChangeNotifier {
           .toList();
       _hasMore = cached['hasMore'] == true;
       _hasLoadedOnce = true;
+      notifyListeners();
     }
   }
 

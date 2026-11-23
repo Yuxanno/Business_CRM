@@ -26,6 +26,7 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ userId: 1, createdAt: -1 });
+orderSchema.index({ userId: 1, status: 1 });
 orderSchema.index({ userId: 1, status: 1, createdAt: -1 });
 orderSchema.index({ userId: 1, customerId: 1, createdAt: -1 });
 

@@ -43,8 +43,13 @@ class CustomerProvider extends ChangeNotifier {
   int? get withDebtCountFromServer => (_counts?['withDebt'] as num?)?.toInt();
 
   Future<void> hydrateFromCache() async {
-    _counts ??= await LocalCache.readMap('${_cacheKey}_counts');
-    final cached = await LocalCache.readMap(_cacheKey);
+    if (_hasLoadedOnce && _customers.isNotEmpty) return;
+    final results = await Future.wait([
+      LocalCache.readMap('${_cacheKey}_counts'),
+      LocalCache.readMap(_cacheKey),
+    ]);
+    _counts ??= results[0];
+    final cached = results[1];
     if (cached != null) {
       final rawItems = (cached['items'] as List?) ?? const [];
       _customers = rawItems
@@ -52,6 +57,7 @@ class CustomerProvider extends ChangeNotifier {
           .toList();
       _hasMore = cached['hasMore'] == true;
       _hasLoadedOnce = true;
+      notifyListeners();
     }
   }
 

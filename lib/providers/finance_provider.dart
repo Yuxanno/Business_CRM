@@ -77,9 +77,14 @@ class FinanceProvider extends ChangeNotifier {
   }
 
   Future<void> hydrateFromCache() async {
+    if (_hasLoadedOnce && _transactions.isNotEmpty) return;
     final y = _selectedYear;
     final m = _selectedMonth;
-    final c = await LocalCache.readMap('${_cacheKey(y, m)}_counts');
+    final results = await Future.wait([
+      LocalCache.readMap('${_cacheKey(y, m)}_counts'),
+      LocalCache.readMap(_cacheKey(y, m)),
+    ]);
+    final c = results[0];
     if (c != null) {
       _counts = (
         total: (c['total'] as num?)?.toInt() ?? 0,
@@ -87,7 +92,7 @@ class FinanceProvider extends ChangeNotifier {
         expense: (c['expense'] as num?)?.toInt() ?? 0,
       );
     }
-    final cached = await LocalCache.readMap(_cacheKey(y, m));
+    final cached = results[1];
     if (cached != null) {
       final rawItems = (cached['items'] as List?) ?? const [];
       _transactions = rawItems
@@ -98,6 +103,7 @@ class FinanceProvider extends ChangeNotifier {
       _incomeCents = (cached['incomeCents'] as num?)?.toInt() ?? 0;
       _expenseCents = (cached['expenseCents'] as num?)?.toInt() ?? 0;
       _hasLoadedOnce = true;
+      notifyListeners();
     }
   }
 

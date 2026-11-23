@@ -27,7 +27,7 @@ const PORT = process.env.PORT || 3001;
 app.set('etag', 'weak');
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(compression({ threshold: 256 }));
+app.use(compression({ level: 6, threshold: 256 }));
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

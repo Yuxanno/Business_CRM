@@ -145,51 +145,36 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
             // ── 3. Scrollable Orders List ─────────────────────────────────
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 280),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                layoutBuilder: (currentChild, previousChildren) => Stack(
-                  alignment: Alignment.topCenter,
-                  children: [
-                    ...previousChildren,
-                    ?currentChild,
-                  ],
-                ),
-                child: provider.isLoading
-                    ? const Align(
-                        key: ValueKey('skeleton'),
-                        alignment: Alignment.topCenter,
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            _kPagePadding,
-                            AppSpacing.md,
-                            _kPagePadding,
-                            100,
-                          ),
-                          child: AppSkeletonList(count: 4),
+              child: provider.isLoading
+                  ? const Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          _kPagePadding,
+                          AppSpacing.md,
+                          _kPagePadding,
+                          100,
                         ),
-                      )
-                    : RefreshIndicator(
-                        key: const ValueKey('content'),
-                        color: colors.primary,
-                        backgroundColor: colors.surface,
-                        onRefresh: _reload,
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            if (notification.metrics.pixels >=
-                                    notification.metrics.maxScrollExtent - 320 &&
-                                provider.hasMore &&
-                                !provider.isLoadingMore) {
-                              provider.loadMore();
-                            }
-                            return false;
-                          },
-                          child: CustomScrollView(
-                            physics: const AlwaysScrollableScrollPhysics(
-                              parent: BouncingScrollPhysics(),
-                            ),
-                            slivers: [
+                        child: AppSkeletonList(count: 4),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      color: colors.primary,
+                      backgroundColor: colors.surface,
+                      onRefresh: _reload,
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (notification) {
+                          if (notification.metrics.pixels >=
+                                  notification.metrics.maxScrollExtent - 320 &&
+                              provider.hasMore &&
+                              !provider.isLoadingMore) {
+                            provider.loadMore();
+                          }
+                          return false;
+                        },
+                        child: CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
 
               // ── 4. Orders List / Empty State ──────────────────────────────
               if (visibleOrders.isEmpty)
@@ -238,40 +223,48 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     _kPagePadding,
                     110,
                   ),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (ctx, i) {
-                        final order = visibleOrders[i];
-                        return RepaintBoundary(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _ModernOrderCard(
-                              order: order,
-                              currency: currency,
-                              onTap: () async {
-                                HapticFeedback.selectionClick();
-                                final orderProvider =
-                                    context.read<OrderProvider>();
-                                final customerProvider =
-                                    context.read<CustomerProvider>();
-                                final dashboardProvider =
-                                    context.read<DashboardProvider>();
-                                await context.push('/orders/${order.id}');
-                                if (mounted) {
-                                  orderProvider.load();
-                                  customerProvider.load(silent: true);
-                                  dashboardProvider.reload();
-                                }
-                              },
-                              onEdit: () =>
-                                  _openForm('/orders/${order.id}/edit'),
-                              onDelete: () => _confirmDelete(context, order),
-                            ),
-                          ),
-                        );
-                      },
-                      childCount: visibleOrders.length,
+                  sliver: SliverPrototypeExtentList.builder(
+                    prototypeItem: Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _ModernOrderCard(
+                        order: visibleOrders.first,
+                        currency: currency,
+                        onTap: () {},
+                        onEdit: () {},
+                        onDelete: () {},
+                      ),
                     ),
+                    itemCount: visibleOrders.length,
+                    itemBuilder: (ctx, i) {
+                      final order = visibleOrders[i];
+                      return RepaintBoundary(
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _ModernOrderCard(
+                            order: order,
+                            currency: currency,
+                            onTap: () async {
+                              HapticFeedback.selectionClick();
+                              final orderProvider =
+                                  context.read<OrderProvider>();
+                              final customerProvider =
+                                  context.read<CustomerProvider>();
+                              final dashboardProvider =
+                                  context.read<DashboardProvider>();
+                              await context.push('/orders/${order.id}');
+                              if (mounted) {
+                                orderProvider.load();
+                                customerProvider.load(silent: true);
+                                dashboardProvider.reload();
+                              }
+                            },
+                            onEdit: () =>
+                                _openForm('/orders/${order.id}/edit'),
+                            onDelete: () => _confirmDelete(context, order),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               if (provider.isLoadingMore)
@@ -294,7 +287,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ),
                 ),
               ),
-            ),
             ),
           ],
         ),

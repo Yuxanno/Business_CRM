@@ -63,10 +63,12 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   Future<void> hydrateFromCache() async {
+    if (_hasData) return;
     final cacheKey = 'dashboard_${_year}_$_month';
     final cached = await LocalCache.readMap(cacheKey);
     if (cached != null) {
       _applyPayload(cached);
+      notifyListeners();
     }
   }
 

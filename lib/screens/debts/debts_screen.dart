@@ -552,51 +552,36 @@ class _DebtsScreenState extends State<DebtsScreen> {
 
             // ── 4. Scrollable Debts List ──────────────────────────────────
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 280),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                layoutBuilder: (currentChild, previousChildren) => Stack(
-                  alignment: Alignment.topCenter,
-                  children: [
-                    ...previousChildren,
-                    ?currentChild,
-                  ],
-                ),
-                child: provider.isLoading
-                    ? const Align(
-                        key: ValueKey('skeleton'),
-                        alignment: Alignment.topCenter,
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            _kPagePadding,
-                            AppSpacing.md,
-                            _kPagePadding,
-                            100,
-                          ),
-                          child: AppSkeletonList(count: 4),
+              child: provider.isLoading
+                  ? const Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          _kPagePadding,
+                          AppSpacing.md,
+                          _kPagePadding,
+                          100,
                         ),
-                      )
-                    : RefreshIndicator(
-                        key: const ValueKey('content'),
-                        color: colors.primary,
-                        backgroundColor: colors.surface,
-                        onRefresh: _reload,
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            if (notification.metrics.pixels >=
-                                    notification.metrics.maxScrollExtent - 320 &&
-                                provider.hasMore &&
-                                !provider.isLoadingMore) {
-                              provider.loadMore();
-                            }
-                            return false;
-                          },
-                          child: CustomScrollView(
-                            physics: const AlwaysScrollableScrollPhysics(
-                              parent: BouncingScrollPhysics(),
-                            ),
-                            slivers: [
+                        child: AppSkeletonList(count: 4),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      color: colors.primary,
+                      backgroundColor: colors.surface,
+                      onRefresh: _reload,
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (notification) {
+                          if (notification.metrics.pixels >=
+                                  notification.metrics.maxScrollExtent - 320 &&
+                              provider.hasMore &&
+                              !provider.isLoadingMore) {
+                            provider.loadMore();
+                          }
+                          return false;
+                        },
+                        child: CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
 
               // ── 5. Debts List / Empty State ───────────────────────────────
               if (visibleEntries.isEmpty)
@@ -656,54 +641,53 @@ class _DebtsScreenState extends State<DebtsScreen> {
                     _kPagePadding,
                     110,
                   ),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (ctx, i) {
-                        final entry = visibleEntries[i];
-                        return RepaintBoundary(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _ModernDebtCard(
-                              entry: entry,
-                              currency: currency,
-                              onTap: () async {
-                                HapticFeedback.selectionClick();
-                                final op = context.read<OrderProvider>();
-                                final dp = context.read<DebtProvider>();
-                                final dash = context.read<DashboardProvider>();
-                                if (entry.isOrder) {
-                                  await context.push('/orders/${entry.id}');
-                                  op.load(silent: true, force: true);
-                                  dash.reload();
-                                } else {
-                                  await context.push('/profile/debts/${entry.id}');
-                                  dp.load(force: true);
-                                  dash.reload();
-                                }
-                              },
-                              onPay: entry.isFullyPaid
-                                  ? null
-                                  : () {
-                                      if (entry.isOrder) {
-                                        _showOrderPaymentSheet(
-                                            context, entry.order!);
-                                      } else {
-                                        _showPaymentSheet(
-                                            context, entry.debt!);
-                                      }
-                                    },
-                              onEdit: () => entry.isOrder
-                                  ? _openForm('/orders/${entry.id}/edit')
-                                  : _openForm('/profile/debts/${entry.id}/edit'),
-                              onDelete: entry.isOrder
-                                  ? null
-                                  : () => _confirmDelete(context, entry.debt!),
-                            ),
+                  sliver: SliverList.builder(
+                    addAutomaticKeepAlives: false,
+                    itemCount: visibleEntries.length,
+                    itemBuilder: (ctx, i) {
+                      final entry = visibleEntries[i];
+                      return RepaintBoundary(
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _ModernDebtCard(
+                            entry: entry,
+                            currency: currency,
+                            onTap: () async {
+                              HapticFeedback.selectionClick();
+                              final op = context.read<OrderProvider>();
+                              final dp = context.read<DebtProvider>();
+                              final dash = context.read<DashboardProvider>();
+                              if (entry.isOrder) {
+                                await context.push('/orders/${entry.id}');
+                                op.load(silent: true, force: true);
+                                dash.reload();
+                              } else {
+                                await context.push('/profile/debts/${entry.id}');
+                                dp.load(force: true);
+                                dash.reload();
+                              }
+                            },
+                            onPay: entry.isFullyPaid
+                                ? null
+                                : () {
+                                    if (entry.isOrder) {
+                                      _showOrderPaymentSheet(
+                                          context, entry.order!);
+                                    } else {
+                                      _showPaymentSheet(
+                                          context, entry.debt!);
+                                    }
+                                  },
+                            onEdit: () => entry.isOrder
+                                ? _openForm('/orders/${entry.id}/edit')
+                                : _openForm('/profile/debts/${entry.id}/edit'),
+                            onDelete: entry.isOrder
+                                ? null
+                                : () => _confirmDelete(context, entry.debt!),
                           ),
-                        );
-                      },
-                      childCount: visibleEntries.length,
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               if (provider.isLoadingMore)
@@ -726,7 +710,6 @@ class _DebtsScreenState extends State<DebtsScreen> {
                   ),
                 ),
               ),
-            ),
             ),
           ],
         ),

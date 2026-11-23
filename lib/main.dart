@@ -1,15 +1,13 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import 'l10n/app_localizations.dart';
 import 'l10n/app_tr.dart';
-import 'components/app_splash_screen.dart';
 import 'theme/app_theme.dart';
 import 'providers/settings_provider.dart';
 import 'providers/customer_provider.dart';
@@ -22,6 +20,9 @@ import 'router/app_router.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Disable runtime network font fetching so first frame never stalls on font HTTP requests.
+  GoogleFonts.config.allowRuntimeFetching = false;
+
   // Lock to portrait without blocking startup.
   unawaited(SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -31,24 +32,16 @@ Future<void> main() async {
   final settingsProvider = SettingsProvider();
   final dashboardProvider = DashboardProvider();
 
-  // Start loading settings & dashboard cache immediately without blocking runApp().
-  final preloadFuture = () async {
-    await settingsProvider.init(skipRemoteSync: true);
-    if (settingsProvider.isOnboardingDone) {
-      await dashboardProvider.hydrateFromCache();
-    }
-  }();
+  // Fast local preload capped at 150ms so startup is never blocked.
+  try {
+    await Future.wait([
+      settingsProvider.init(skipRemoteSync: true),
+      dashboardProvider.hydrateFromCache(),
+    ]).timeout(const Duration(milliseconds: 150));
+  } catch (_) {}
 
-  // Decode the tiny 3.5 KB in-memory logo (~2ms, zero disk I/O) so Frame 1
-  // renders the logo synchronously with zero white-box delay.
-  ui.Image? initialLogoImage;
-  if (!kIsWeb) {
-    try {
-      final codec = await ui.instantiateImageCodec(kEmbeddedSplashLogoBytes);
-      final frame = await codec.getNextFrame();
-      initialLogoImage = frame.image;
-    } catch (_) {}
-  }
+  final initialLocation =
+      settingsProvider.isOnboardingDone ? '/home' : '/login';
 
   runApp(
     MultiProvider(
@@ -60,10 +53,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => DebtProvider()),
         ChangeNotifierProvider.value(value: dashboardProvider),
       ],
-      child: BusinessManagerApp(
-        initialLogoImage: initialLogoImage,
-        preloadFuture: preloadFuture,
-      ),
+      child: BusinessManagerApp(initialLocation: initialLocation),
     ),
   );
 }
@@ -71,12 +61,10 @@ Future<void> main() async {
 class BusinessManagerApp extends StatefulWidget {
   const BusinessManagerApp({
     super.key,
-    this.initialLogoImage,
-    this.preloadFuture,
+    required this.initialLocation,
   });
 
-  final ui.Image? initialLogoImage;
-  final Future<void>? preloadFuture;
+  final String initialLocation;
 
   @override
   State<BusinessManagerApp> createState() => _BusinessManagerAppState();
@@ -88,7 +76,7 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
   @override
   void initState() {
     super.initState();
-    _router = AppRouter.router(initialLocation: '/splash-wait');
+    _router = AppRouter.router(initialLocation: widget.initialLocation);
   }
 
   @override
@@ -116,12 +104,6 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       routerConfig: _router,
-      builder: (context, child) => AppStartupSplash(
-        router: _router,
-        initialLogoImage: widget.initialLogoImage,
-        preloadFuture: widget.preloadFuture,
-        child: child ?? const AppSplashWaitScreen(),
-      ),
     );
   }
 }
