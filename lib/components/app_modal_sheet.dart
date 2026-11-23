@@ -17,8 +17,8 @@ Future<T?> showAppModal<T>({
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0xFF09191F).withValues(alpha: 0.52),
     sheetAnimationStyle: AnimationStyle(
-      duration: const Duration(milliseconds: 340),
-      reverseDuration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 170),
+      reverseDuration: const Duration(milliseconds: 130),
       curve: Curves.easeOutCubic,
       reverseCurve: Curves.easeInCubic,
     ),
@@ -112,14 +112,9 @@ class AppModalSheet extends StatelessWidget {
                   ),
                 ),
 
-                // Flexible scrollable content with smooth loading -> form swap
+                // Flexible scrollable content
                 Flexible(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 240),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    child: body,
-                  ),
+                  child: body,
                 ),
 
                 // Optional pinned bottom bar

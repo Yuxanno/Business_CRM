@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+
+// Native bcrypt (C++) is ~3-5x faster than pure-JS bcryptjs on Render's small
+// CPU, which directly speeds up login/registration. Hashes are fully
+// compatible ($2a/$2b), so existing users keep working. Falls back to bcryptjs
+// if the native module cannot be loaded on the host.
+let bcrypt;
+try {
+  bcrypt = require('bcrypt');
+} catch (_) {
+  bcrypt = require('bcryptjs');
+}
 
 const userSchema = new mongoose.Schema(
   {

@@ -1002,7 +1002,7 @@ class _FormSubmitButtonState extends State<FormSubmitButton> {
 
 // ─── Stagger animation helper ─────────────────────────────────────────────────
 
-/// Hardware-accelerated staggered entrance animation for form fields.
+/// Instant form field wrapper (renders immediately on frame 1 without stagger latency).
 class FormStaggerItem extends StatelessWidget {
   const FormStaggerItem({
     super.key,
@@ -1016,24 +1016,5 @@ class FormStaggerItem extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    final start = (index * 0.06).clamp(0.0, 0.6);
-    final end = (start + 0.4).clamp(0.0, 1.0);
-
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: Interval(start, end, curve: Curves.easeOutCubic),
-    );
-
-    return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.04),
-          end: Offset.zero,
-        ).animate(curved),
-        child: child,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => child;
 }

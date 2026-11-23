@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/transaction.dart';
 import '../repositories/transaction_repository.dart';
 import '../services/local_cache.dart';
+import '../services/sync_queue.dart';
 
 class FinanceProvider extends ChangeNotifier {
   static const int pageSize = 50;
@@ -391,8 +392,23 @@ class FinanceProvider extends ChangeNotifier {
     }
   }
 
+  // ── Optimistic writes: UI updates in the same frame, server sync in background.
+
+  ({List<AppTransaction> list, int income, int expense}) _snapshot() =>
+      (list: List<AppTransaction>.of(_transactions), income: _incomeCents, expense: _expenseCents);
+
+  void _restore(({List<AppTransaction> list, int income, int expense}) s) {
+    _transactions = s.list;
+    _incomeCents = s.income;
+    _expenseCents = s.expense;
+    notifyListeners();
+  }
+
+  Future<void> _reloadCurrent() =>
+      loadMonth(_selectedYear, _selectedMonth, silent: true, force: true);
+
   Future<void> add(AppTransaction tx) async {
-    await _repo.insert(tx);
+    final before = _snapshot();
     if (tx.date.year == _selectedYear && tx.date.month == _selectedMonth) {
       _transactions = [tx, ..._transactions];
       if (tx.type == TransactionType.income) {
@@ -402,24 +418,32 @@ class FinanceProvider extends ChangeNotifier {
       }
       notifyListeners();
     }
-    unawaited(loadMonth(_selectedYear, _selectedMonth, silent: true, force: true));
+    SyncQueue.background(
+      () => _repo.insert(tx),
+      onError: (_) => _restore(before),
+      onSuccess: _reloadCurrent,
+    );
   }
 
   Future<void> update(AppTransaction tx) async {
-    await _repo.update(tx);
+    final before = _snapshot();
     final idx = _transactions.indexWhere((t) => t.id == tx.id);
     if (idx != -1) {
-      _transactions[idx] = tx;
+      _transactions = List<AppTransaction>.of(_transactions)..[idx] = tx;
       _recomputeLocalTotals();
       notifyListeners();
     }
-    unawaited(loadMonth(_selectedYear, _selectedMonth, silent: true, force: true));
+    SyncQueue.background(
+      () => _repo.update(tx),
+      onError: (_) => _restore(before),
+      onSuccess: _reloadCurrent,
+    );
   }
 
   Future<void> delete(String id) async {
-    await _repo.delete(id);
+    final before = _snapshot();
     final removed = _transactions.where((t) => t.id == id).firstOrNull;
-    _transactions.removeWhere((t) => t.id == id);
+    _transactions = _transactions.where((t) => t.id != id).toList();
     if (removed != null) {
       if (removed.type == TransactionType.income) {
         _incomeCents = (_incomeCents - removed.amountCents).clamp(0, 1 << 62);
@@ -428,7 +452,11 @@ class FinanceProvider extends ChangeNotifier {
       }
     }
     notifyListeners();
-    unawaited(refreshCounts());
+    SyncQueue.background(
+      () => _repo.delete(id),
+      onError: (_) => _restore(before),
+      onSuccess: refreshCounts,
+    );
   }
 
   /// Returns daily chart data for the selected month.

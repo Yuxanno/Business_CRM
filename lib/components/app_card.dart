@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/performance_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 
@@ -38,7 +39,7 @@ class AppCard extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(r),
         border: Border.all(color: colors.border, width: 1),
-        boxShadow: elevated
+        boxShadow: (elevated && !PerformanceService.instance.isLowEnd)
             ? [
                 BoxShadow(
                   color: AppColors.ink.withValues(alpha: 0.03),
@@ -62,7 +63,7 @@ class AppCard extends StatelessWidget {
           : Padding(padding: pad, child: child),
     );
 
-    if (onTap == null) return card;
+    if (onTap == null || PerformanceService.instance.isLowEnd) return card;
     return _TactileCardScale(child: card);
   }
 }

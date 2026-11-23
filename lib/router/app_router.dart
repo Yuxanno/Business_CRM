@@ -40,19 +40,42 @@ CustomTransitionPage<void> _modalPage(GoRouterState state, Widget child) {
   );
 }
 
+/// Regular screen route with a short (150 ms) fade instead of the default
+/// 300 ms Material transition, so taps feel instant.
+GoRoute _fastRoute({
+  required String path,
+  required Widget Function(BuildContext, GoRouterState) builder,
+  List<RouteBase> routes = const <RouteBase>[],
+}) {
+  return GoRoute(
+    path: path,
+    routes: routes,
+    pageBuilder: (ctx, state) => CustomTransitionPage<void>(
+      key: state.pageKey,
+      transitionDuration: const Duration(milliseconds: 150),
+      reverseTransitionDuration: const Duration(milliseconds: 120),
+      child: builder(ctx, state),
+      transitionsBuilder: (_, animation, _, child) => FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+        child: child,
+      ),
+    ),
+  );
+}
+
 class AppRouter {
   static GoRouter router({String initialLocation = '/home'}) => GoRouter(
         initialLocation: initialLocation,
         routes: [
-          GoRoute(
+          _fastRoute(
             path: '/login',
             builder: (ctx, state) => const LoginScreen(),
           ),
-          GoRoute(
+          _fastRoute(
             path: '/register',
             builder: (ctx, state) => const LoginScreen(initialRegister: true),
           ),
-          GoRoute(
+          _fastRoute(
             path: '/onboarding',
             builder: (ctx, state) => const OnboardingScreen(),
           ),
@@ -62,7 +85,7 @@ class AppRouter {
             branches: [
               StatefulShellBranch(
                 routes: [
-                  GoRoute(
+                  _fastRoute(
                     path: '/home',
                     builder: (ctx, state) => const HomeScreen(),
                   ),
@@ -70,7 +93,7 @@ class AppRouter {
               ),
               StatefulShellBranch(
                 routes: [
-                  GoRoute(
+                  _fastRoute(
                     path: '/finance',
                     builder: (ctx, state) => const FinanceScreen(),
                     routes: [
@@ -105,7 +128,7 @@ class AppRouter {
               ),
               StatefulShellBranch(
                 routes: [
-                  GoRoute(
+                  _fastRoute(
                     path: '/orders',
                     builder: (ctx, state) => const OrdersScreen(),
                     routes: [
@@ -116,7 +139,7 @@ class AppRouter {
                           const OrderFormScreen(),
                         ),
                       ),
-                      GoRoute(
+                      _fastRoute(
                         path: ':id',
                         builder: (ctx, state) => OrderDetailScreen(
                           orderId: state.pathParameters['id']!,
@@ -139,11 +162,11 @@ class AppRouter {
               ),
               StatefulShellBranch(
                 routes: [
-                  GoRoute(
+                  _fastRoute(
                     path: '/profile',
                     builder: (ctx, state) => const ProfileScreen(),
                     routes: [
-                      GoRoute(
+                      _fastRoute(
                         path: 'customers',
                         builder: (ctx, state) => const CustomersScreen(),
                         routes: [
@@ -154,7 +177,7 @@ class AppRouter {
                               const CustomerFormScreen(),
                             ),
                           ),
-                          GoRoute(
+                          _fastRoute(
                             path: ':id',
                             builder: (ctx, state) => CustomerDetailScreen(
                               customerId: state.pathParameters['id']!,
@@ -173,7 +196,7 @@ class AppRouter {
                           ),
                         ],
                       ),
-                      GoRoute(
+                      _fastRoute(
                         path: 'debts',
                         builder: (ctx, state) => const DebtsScreen(),
                         routes: [
@@ -193,7 +216,7 @@ class AppRouter {
                               );
                             },
                           ),
-                          GoRoute(
+                          _fastRoute(
                             path: ':id',
                             builder: (ctx, state) => DebtDetailScreen(
                               debtId: state.pathParameters['id']!,
@@ -212,11 +235,11 @@ class AppRouter {
                           ),
                         ],
                       ),
-                      GoRoute(
+                      _fastRoute(
                         path: 'settings',
                         builder: (ctx, state) => const SettingsScreen(),
                       ),
-                      GoRoute(
+                      _fastRoute(
                         path: 'categories',
                         builder: (ctx, state) {
                           final type = state.uri.queryParameters['type'];
@@ -227,15 +250,15 @@ class AppRouter {
                           );
                         },
                       ),
-                      GoRoute(
+                      _fastRoute(
                         path: 'details',
                         builder: (ctx, state) => const ProfileDetailScreen(),
                       ),
-                      GoRoute(
+                      _fastRoute(
                         path: 'reports',
                         builder: (ctx, state) => const ReportsScreen(),
                         routes: [
-                          GoRoute(
+                          _fastRoute(
                             path: ':year/:month',
                             builder: (ctx, state) => ReportDetailScreen(
                               year: int.parse(state.pathParameters['year']!),

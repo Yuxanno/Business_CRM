@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -68,10 +69,16 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
     HapticFeedback.selectionClick();
     await context.push('/profile/debts/${_debt!.id}/edit');
     if (mounted) {
-      await _load();
-      if (mounted) {
-        context.read<DashboardProvider>().reload();
+      final latest = context
+          .read<DebtProvider>()
+          .all
+          .where((d) => d.id == widget.debtId)
+          .firstOrNull;
+      if (latest != null) {
+        setState(() => _debt = latest);
       }
+      unawaited(_load());
+      context.read<DashboardProvider>().reload();
     }
   }
 
@@ -130,17 +137,37 @@ class _DebtDetailScreenState extends State<DebtDetailScreen> {
             final debtProvider = context.read<DebtProvider>();
             final dashboardProvider = context.read<DashboardProvider>();
             const uuid = Uuid();
+            final clamped = cents.clamp(0, remainingCents);
+            final now = DateTime.now();
+            final newPayment = DebtPayment(
+              id: uuid.v4(),
+              debtId: _debt!.id,
+              amountCents: clamped,
+              paidAt: now,
+              notes: notesCtrl.text.trim().isNotEmpty
+                  ? notesCtrl.text.trim()
+                  : null,
+              transactionId: uuid.v4(),
+            );
             await debtProvider.recordPayment(
-                  debtId: _debt!.id,
-                  amountCents: cents.clamp(0, remainingCents),
-                  paymentId: uuid.v4(),
-                  transactionId: uuid.v4(),
-                  notes: notesCtrl.text.trim().isNotEmpty
-                      ? notesCtrl.text.trim()
-                      : null,
+                  debtId: newPayment.debtId,
+                  amountCents: newPayment.amountCents,
+                  paymentId: newPayment.id,
+                  transactionId: newPayment.transactionId!,
+                  paidAt: now,
+                  notes: newPayment.notes,
                 );
+            if (mounted) {
+              final latest = debtProvider.all
+                  .where((d) => d.id == widget.debtId)
+                  .firstOrNull;
+              setState(() {
+                if (latest != null) _debt = latest;
+                _payments = [newPayment, ..._payments];
+              });
+            }
             dashboardProvider.reload();
-            _load();
+            unawaited(_load());
           },
         ),
         body: ListView(

@@ -296,8 +296,9 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> update(AppSettings updated) async {
     _settings = updated;
     AppTr.isEn = _settings.locale == 'en';
-    await _repo.save(_settings);
+    // UI updates instantly; persistence happens afterwards.
     notifyListeners();
+    await _repo.save(_settings);
     unawaited(NotificationService.instance.onLocaleChanged(_settings.locale));
   }
 

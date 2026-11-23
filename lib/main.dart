@@ -16,9 +16,13 @@ import 'providers/finance_provider.dart';
 import 'providers/debt_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'router/app_router.dart';
+import 'services/performance_service.dart';
+import 'services/api_client.dart';
+import 'services/sync_queue.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  PerformanceService.instance.startMonitoring();
 
   // Disable runtime network font fetching so first frame never stalls on font HTTP requests.
   GoogleFonts.config.allowRuntimeFetching = false;
@@ -31,26 +35,37 @@ Future<void> main() async {
 
   final settingsProvider = SettingsProvider();
   final dashboardProvider = DashboardProvider();
+  final customerProvider = CustomerProvider();
+  final orderProvider = OrderProvider();
+  final financeProvider = FinanceProvider();
+  final debtProvider = DebtProvider();
 
-  // Fast local preload capped at 150ms so startup is never blocked.
+  // Fast local preload capped at 80ms so startup is never blocked.
   try {
     await Future.wait([
       settingsProvider.init(skipRemoteSync: true),
       dashboardProvider.hydrateFromCache(),
-    ]).timeout(const Duration(milliseconds: 150));
+      customerProvider.hydrateFromCache(),
+      orderProvider.hydrateFromCache(),
+      financeProvider.hydrateFromCache(),
+      debtProvider.hydrateFromCache(),
+    ]).timeout(const Duration(milliseconds: 80));
   } catch (_) {}
 
   final initialLocation =
       settingsProvider.isOnboardingDone ? '/home' : '/login';
 
+  // Open the connection / wake the server while the first frame renders.
+  ApiClient.instance.warmUp();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: settingsProvider),
-        ChangeNotifierProvider(create: (_) => CustomerProvider()),
-        ChangeNotifierProvider(create: (_) => OrderProvider()),
-        ChangeNotifierProvider(create: (_) => FinanceProvider()),
-        ChangeNotifierProvider(create: (_) => DebtProvider()),
+        ChangeNotifierProvider.value(value: customerProvider),
+        ChangeNotifierProvider.value(value: orderProvider),
+        ChangeNotifierProvider.value(value: financeProvider),
+        ChangeNotifierProvider.value(value: debtProvider),
         ChangeNotifierProvider.value(value: dashboardProvider),
       ],
       child: BusinessManagerApp(initialLocation: initialLocation),
@@ -98,6 +113,7 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
     return MaterialApp.router(
       title: 'BizFlow',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: AppMessenger.key,
       theme: AppTheme.light,
       themeMode: ThemeMode.light,
       locale: locale,

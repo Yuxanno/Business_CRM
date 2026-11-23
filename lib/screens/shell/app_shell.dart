@@ -4,66 +4,25 @@ import 'package:go_router/go_router.dart';
 import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
 
-class AppShell extends StatefulWidget {
+class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.navigationShell});
   final StatefulNavigationShell navigationShell;
 
-  @override
-  State<AppShell> createState() => _AppShellState();
-}
-
-class _AppShellState extends State<AppShell>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _switchCtrl;
-  late final Animation<double> _fadeAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _switchCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 160),
-      value: 1.0,
-    );
-    _fadeAnim = Tween<double>(begin: 0.88, end: 1.0).animate(
-      CurvedAnimation(parent: _switchCtrl, curve: Curves.easeOutCubic),
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant AppShell oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final oldIdx = oldWidget.navigationShell.currentIndex;
-    final newIdx = widget.navigationShell.currentIndex;
-    if (oldIdx != newIdx) {
-      _switchCtrl.forward(from: 0.0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _switchCtrl.dispose();
-    super.dispose();
-  }
-
   void _onSelectTab(int index) {
     HapticFeedback.selectionClick();
-    final currentIdx = widget.navigationShell.currentIndex;
+    final currentIdx = navigationShell.currentIndex;
     final isSame = index == currentIdx;
-    widget.navigationShell.goBranch(index, initialLocation: isSame);
+    navigationShell.goBranch(index, initialLocation: isSame);
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final currentIndex = widget.navigationShell.currentIndex;
+    final currentIndex = navigationShell.currentIndex;
 
     return Scaffold(
       body: RepaintBoundary(
-        child: FadeTransition(
-          opacity: _fadeAnim,
-          child: widget.navigationShell,
-        ),
+        child: navigationShell,
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -111,7 +70,7 @@ class _BottomNavBarContent extends StatelessWidget {
         Positioned.fill(
           child: IgnorePointer(
             child: AnimatedAlign(
-              duration: const Duration(milliseconds: 260),
+              duration: const Duration(milliseconds: 140),
               curve: Curves.easeOutCubic,
               alignment: Alignment(alignX, 0),
               child: FractionallySizedBox(
@@ -210,28 +169,21 @@ class _NavItem extends StatelessWidget {
               width: 53,
               height: 29,
               child: Center(
-                child: AnimatedScale(
-                  scale: selected ? 1.06 : 1.0,
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  child: Icon(
-                    selected ? activeIcon : icon,
-                    size: 21,
-                    color: selected ? colors.primary : colors.textMuted,
-                  ),
+                child: Icon(
+                  selected ? activeIcon : icon,
+                  size: 21,
+                  color: selected ? colors.primary : colors.textMuted,
                 ),
               ),
             ),
             const SizedBox(height: 3),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
+            Text(
+              label,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 color: selected ? colors.primary : colors.textMuted,
               ),
-              child: Text(label),
             ),
           ],
         ),

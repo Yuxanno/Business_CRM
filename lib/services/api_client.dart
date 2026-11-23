@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/app_tr.dart';
+import 'http_client_factory.dart';
+import 'sync_queue.dart';
 
 class ApiException implements Exception {
   ApiException(this.message, {this.statusCode});
@@ -27,7 +29,7 @@ class ApiClient {
   static const _requestTimeout = Duration(seconds: 12);
   static const String _defaultRenderUrl = 'https://business-crm-da1s.onrender.com';
 
-  final http.Client _client = http.Client();
+  final http.Client _client = createHttpClient();
   String? _cachedToken;
   bool _tokenLoaded = false;
   Timer? _keepAliveTimer;
@@ -95,7 +97,6 @@ class ApiClient {
     }
     return {
       'Content-Type': 'application/json',
-      'Accept-Encoding': 'gzip',
       'Accept-Language': AppTr.isEn ? 'en' : 'ru',
       if (_cachedToken != null && _cachedToken!.isNotEmpty)
         'Authorization': 'Bearer $_cachedToken',
@@ -130,7 +131,42 @@ class ApiClient {
     _etagPayloads.removeWhere((k, _) => hit(k));
   }
 
-  Future<dynamic> get(String path) => _send('GET', path);
+  Future<dynamic> get(String path) {
+    // Deduplicate identical concurrent GETs (e.g. two widgets asking for the
+    // same list at once) into a single network request.
+    final existing = _inFlightGets[path];
+    if (existing != null) return existing;
+    final future = _getWithConsistency(path);
+    _inFlightGets[path] = future;
+    future.whenComplete(() => _inFlightGets.remove(path)).ignore();
+    return future;
+  }
+
+  final Map<String, Future<dynamic>> _inFlightGets = {};
+
+  Future<dynamic> _getWithConsistency(String path) async {
+    // Read-after-write consistency: never fetch while optimistic writes are
+    // still in flight, otherwise stale server data would overwrite local edits.
+    if (SyncQueue.hasPending && !SyncQueue.isInsideQueue) {
+      await SyncQueue.idle;
+    }
+    try {
+      return await _send('GET', path);
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      // One quick retry on transient network errors (socket reset, timeout).
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return _send('GET', path);
+    }
+  }
+
+  /// Fire-and-forget ping that wakes the backend (Render cold start) and opens
+  /// the TCP/TLS connection before the user's first real request.
+  void warmUp() {
+    unawaited(_pingHealth());
+  }
+
   Future<dynamic> post(String path, Map<String, dynamic> body) =>
       _send('POST', path, body);
   Future<dynamic> put(String path, Map<String, dynamic> body) =>
@@ -156,7 +192,6 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$path');
     final headers = <String, String>{
       'Content-Type': contentType,
-      'Accept-Encoding': 'gzip',
       'Accept-Language': AppTr.isEn ? 'en' : 'ru',
       if (_cachedToken != null && _cachedToken!.isNotEmpty)
         'Authorization': 'Bearer $_cachedToken',

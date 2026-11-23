@@ -25,10 +25,11 @@ const orderSchema = new mongoose.Schema(
   { _id: false, versionKey: false }
 );
 
-orderSchema.index({ userId: 1, createdAt: -1 });
+orderSchema.index({ userId: 1, createdAt: -1, _id: -1 });
 orderSchema.index({ userId: 1, status: 1 });
-orderSchema.index({ userId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ userId: 1, status: 1, createdAt: -1, _id: -1 });
 orderSchema.index({ userId: 1, customerId: 1, createdAt: -1 });
+orderSchema.index({ userId: 1, dueDate: 1 });
 
 const orderPaymentSchema = new mongoose.Schema(
   {

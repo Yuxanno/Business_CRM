@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -80,7 +81,15 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     HapticFeedback.selectionClick();
     await context.push('/profile/customers/${_customer!.id}/edit');
     if (mounted) {
-      await _load();
+      final latest = context
+          .read<CustomerProvider>()
+          .allCustomers
+          .where((c) => c.id == widget.customerId)
+          .firstOrNull;
+      if (latest != null) {
+        setState(() => _customer = latest);
+      }
+      unawaited(_load());
     }
   }
 
@@ -88,7 +97,13 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     HapticFeedback.mediumImpact();
     await context.push('/orders/new');
     if (mounted) {
-      await _load();
+      final cachedOrders = context
+          .read<OrderProvider>()
+          .allOrders
+          .where((o) => o.customerId == widget.customerId)
+          .toList();
+      setState(() => _orders = cachedOrders);
+      unawaited(_load());
     }
   }
 

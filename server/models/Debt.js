@@ -29,11 +29,12 @@ const debtSchema = new mongoose.Schema(
   { _id: false, versionKey: false }
 );
 
-debtSchema.index({ userId: 1, createdAt: -1 });
-debtSchema.index({ userId: 1, direction: 1, createdAt: -1 });
+debtSchema.index({ userId: 1, createdAt: -1, _id: -1 });
+debtSchema.index({ userId: 1, direction: 1, createdAt: -1, _id: -1 });
 debtSchema.index({ userId: 1, status: 1 });
 debtSchema.index({ userId: 1, direction: 1, status: 1 });
 debtSchema.index({ userId: 1, customerId: 1 });
+debtSchema.index({ userId: 1, dueDate: 1 });
 
 const debtPaymentSchema = new mongoose.Schema(
   {

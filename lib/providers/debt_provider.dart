@@ -4,6 +4,7 @@ import '../models/debt.dart';
 import '../repositories/debt_repository.dart';
 import '../services/local_cache.dart';
 import '../services/notification_service.dart';
+import '../services/sync_queue.dart';
 
 class DebtProvider extends ChangeNotifier {
   static const int pageSize = 20;
@@ -213,33 +214,67 @@ class DebtProvider extends ChangeNotifier {
     }
   }
 
-  Future<Debt?> getById(String id) => _repo.getById(id);
+  Future<Debt?> getById(String id) async {
+    try {
+      return await _repo.getById(id);
+    } catch (_) {
+      return _debts.where((d) => d.id == id).firstOrNull;
+    }
+  }
+
+  // ── Optimistic writes: UI updates in the same frame, server sync in background.
+
+  void _persistSnapshot() {
+    unawaited(LocalCache.writeMap(_cacheKey, {
+      'items': _debts.map((d) => d.toMap()).toList(),
+      'hasMore': _hasMore,
+    }));
+    unawaited(NotificationService.instance.updateDebts(_debts));
+  }
+
+  void _restore(List<Debt> snapshot) {
+    _debts = snapshot;
+    notifyListeners();
+    _persistSnapshot();
+  }
 
   Future<void> add(Debt debt) async {
-    await _repo.insert(debt);
+    final before = List<Debt>.of(_debts);
     _debts = [debt, ..._debts];
     notifyListeners();
-    unawaited(NotificationService.instance.updateDebts(_debts));
-    unawaited(load(silent: true, force: true));
+    _persistSnapshot();
+    SyncQueue.background(
+      () => _repo.insert(debt),
+      onError: (_) => _restore(before),
+      onSuccess: () => load(silent: true, force: true),
+    );
   }
 
   Future<void> update(Debt debt) async {
-    await _repo.update(debt);
+    final before = List<Debt>.of(_debts);
     final idx = _debts.indexWhere((d) => d.id == debt.id);
     if (idx != -1) {
-      _debts[idx] = debt;
+      _debts = List<Debt>.of(_debts)..[idx] = debt;
       notifyListeners();
-      unawaited(NotificationService.instance.updateDebts(_debts));
+      _persistSnapshot();
     }
-    unawaited(refreshCounts());
+    SyncQueue.background(
+      () => _repo.update(debt),
+      onError: (_) => _restore(before),
+      onSuccess: refreshCounts,
+    );
   }
 
   Future<void> delete(String id) async {
-    await _repo.delete(id);
-    _debts.removeWhere((d) => d.id == id);
+    final before = List<Debt>.of(_debts);
+    _debts = _debts.where((d) => d.id != id).toList();
     notifyListeners();
-    unawaited(NotificationService.instance.updateDebts(_debts));
-    unawaited(refreshCounts());
+    _persistSnapshot();
+    SyncQueue.background(
+      () => _repo.delete(id),
+      onError: (_) => _restore(before),
+      onSuccess: refreshCounts,
+    );
   }
 
   Future<void> recordPayment({
@@ -250,7 +285,8 @@ class DebtProvider extends ChangeNotifier {
     DateTime? paidAt,
     String? notes,
   }) async {
-    final debt = _debts.firstWhere((d) => d.id == debtId);
+    final debt = _debts.where((d) => d.id == debtId).firstOrNull;
+    if (debt == null) return;
     final now = paidAt ?? DateTime.now();
 
     final clamped = amountCents.clamp(0, debt.remainingCents);
@@ -263,23 +299,35 @@ class DebtProvider extends ChangeNotifier {
       updatedAt: now,
     );
 
-    await _repo.insertPayment(DebtPayment(
-      id: paymentId,
-      debtId: debtId,
-      amountCents: clamped,
-      paidAt: now,
-      notes: notes,
-      transactionId: transactionId,
-    ));
-    final fresh = await _repo.getById(debtId);
-
+    final before = List<Debt>.of(_debts);
     final idx = _debts.indexWhere((d) => d.id == debtId);
     if (idx != -1) {
-      _debts[idx] = fresh ?? updatedDebt;
+      _debts = List<Debt>.of(_debts)..[idx] = updatedDebt;
       notifyListeners();
-      unawaited(NotificationService.instance.updateDebts(_debts));
+      _persistSnapshot();
     }
-    unawaited(refreshCounts());
+
+    SyncQueue.background(
+      () => _repo.insertPayment(DebtPayment(
+        id: paymentId,
+        debtId: debtId,
+        amountCents: clamped,
+        paidAt: now,
+        notes: notes,
+        transactionId: transactionId,
+      )),
+      onError: (_) => _restore(before),
+      onSuccess: () async {
+        final fresh = await _repo.getById(debtId);
+        final i = _debts.indexWhere((d) => d.id == debtId);
+        if (fresh != null && i != -1) {
+          _debts = List<Debt>.of(_debts)..[i] = fresh;
+          notifyListeners();
+          _persistSnapshot();
+        }
+        unawaited(refreshCounts());
+      },
+    );
   }
 
   Future<List<DebtPayment>> getPaymentsForDebt(String debtId) =>

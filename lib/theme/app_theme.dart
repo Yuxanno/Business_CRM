@@ -243,8 +243,7 @@ class AppTheme {
   }
 }
 
-/// Silky page transition: gentle 2.5% horizontal glide paired with an
-/// accelerated fade-in so pushes feel crisp without overlapping heavy sheets.
+/// Fast, lightweight page transition without double-layer slide+fade composition.
 class _SmoothFadePageTransitionsBuilder extends PageTransitionsBuilder {
   const _SmoothFadePageTransitionsBuilder();
 
@@ -256,24 +255,15 @@ class _SmoothFadePageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    final fade = CurvedAnimation(
-      parent: animation,
-      curve: const Interval(0.0, 0.78, curve: Curves.easeOutCubic),
-      reverseCurve: Curves.easeInCubic,
-    );
-    final slide = Tween<Offset>(
-      begin: const Offset(0.025, 0),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      ),
-    );
+    if (animation.status == AnimationStatus.completed) {
+      return child;
+    }
     return FadeTransition(
-      opacity: fade,
-      child: SlideTransition(position: slide, child: child),
+      opacity: CurvedAnimation(
+        parent: animation,
+        curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
+      ),
+      child: child,
     );
   }
 }

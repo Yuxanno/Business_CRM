@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -58,10 +60,14 @@ class _LoginScreenState extends State<LoginScreen>
       duration: const Duration(milliseconds: 260),
       value: _isRegister ? 1.0 : 0.0,
     );
+    // No entrance animation: the form is fully visible on the very first frame.
     _enterCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 480),
-    )..forward();
+      duration: Duration.zero,
+      value: 1.0,
+    );
+    // Wake the backend up while the user is typing so "Sign in" responds fast.
+    ApiClient.instance.warmUp();
     _enterFade = CurvedAnimation(
       parent: _enterCtrl,
       curve: Curves.easeOutCubic,
@@ -213,14 +219,15 @@ class _LoginScreenState extends State<LoginScreen>
           ? Map<String, dynamic>.from(raw)
           : <String, dynamic>{};
 
-      final prefs = await SharedPreferences.getInstance();
       final token = (json['token'] ?? '').toString();
-      await prefs.setString('authToken', token);
       ApiClient.instance.setToken(token);
-      await AccountStore.remember(
+      // Persist in the background — navigation must not wait for disk I/O.
+      unawaited(SharedPreferences.getInstance()
+          .then((prefs) => prefs.setString('authToken', token)));
+      unawaited(AccountStore.remember(
         name: (json['name'] ?? '').toString(),
         login: (json['username'] ?? '').toString(),
-      );
+      ));
       if (!mounted) return;
 
       final business = (_isRegister
@@ -234,7 +241,7 @@ class _LoginScreenState extends State<LoginScreen>
       final settings = context.read<SettingsProvider>();
       final locale = (json['locale'] ?? settings.locale).toString();
 
-      await settings.update(
+      unawaited(settings.update(
         settings.settings.copyWith(
           businessName: business,
           ownerName: (json['name'] ?? '').toString(),
@@ -242,16 +249,11 @@ class _LoginScreenState extends State<LoginScreen>
           locale: locale,
           isOnboardingDone: true,
         ),
-      );
+      ));
 
       HapticFeedback.mediumImpact();
-      if (mounted) {
-        setState(() {
-          _authSuccess = true;
-          _isLoading = false;
-        });
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 560));
+      _authSuccess = true;
+      _isLoading = false;
       if (mounted) context.go('/home');
     } on ApiException catch (e) {
       if (mounted) {

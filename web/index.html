@@ -7,6 +7,7 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="description" content="BizFlow — personal business management application.">
+  <meta name="theme-color" content="#F3F7F6">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -14,12 +15,13 @@
   <meta name="apple-mobile-web-app-title" content="BizFlow">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon & Preload Logo -->
   <link rel="icon" href="favicon.ico" sizes="any"/>
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>BizFlow</title>
   <link rel="manifest" href="manifest.json">
+  <!-- Warm up the API connection while the Flutter engine loads -->
+  <link rel="preconnect" href="https://business-crm-da1s.onrender.com" crossorigin>
   <style>
     *, *::before, *::after {
       box-sizing: border-box;
@@ -36,215 +38,14 @@
       inset: 0 !important;
       overscroll-behavior: none !important;
       touch-action: none !important;
-      background-color: #F8FAFC;
+      /* Same color as the login screen: no splash, no flash */
+      background-color: #F3F7F6;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       -webkit-font-smoothing: antialiased;
-    }
-
-    #app-splash {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: #F8FAFC;
-      z-index: 999999;
-      overflow: hidden;
-      touch-action: none;
-      user-select: none;
-      opacity: 1;
-      transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-    }
-
-    #app-splash.splash-hide {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .splash-stage {
-      position: relative;
-      width: 280px;
-      height: 220px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    /* 1. Logo: starts centered alone, glides right to reveal letters, then rises smoothly above title */
-    .splash-logo-Mover {
-      position: absolute;
-      width: 78px;
-      height: 78px;
-      will-change: transform;
-      animation: logoTrajectory 1.35s forwards;
-      z-index: 2;
-    }
-
-    .splash-logo {
-      width: 78px;
-      height: 78px;
-      border-radius: 22px;
-      background: #FFFFFF;
-      border: 1.2px solid #E2E8F0;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-      object-fit: cover;
-      display: block;
-    }
-
-    /* 2. Wordmark ("BizFlow"): letters reveal left-to-right as logo moves right, then centers below logo */
-    .splash-wordmark {
-      position: absolute;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 27px;
-      font-weight: 800;
-      letter-spacing: -0.7px;
-      color: #0F172A;
-      will-change: transform;
-      animation: wordmarkTrajectory 1.35s forwards;
-      z-index: 1;
-    }
-
-    .splash-char {
-      display: inline-block;
-      opacity: 0;
-      transform: translate3d(-6px, 5px, 0) scale(0.86);
-      will-change: transform, opacity;
-      animation: charReveal 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    }
-
-    .splash-char:nth-child(1) { animation-delay: 0.18s; }
-    .splash-char:nth-child(2) { animation-delay: 0.23s; }
-    .splash-char:nth-child(3) { animation-delay: 0.28s; }
-    .splash-char:nth-child(4) { animation-delay: 0.33s; }
-    .splash-char:nth-child(5) { animation-delay: 0.38s; }
-    .splash-char:nth-child(6) { animation-delay: 0.43s; }
-    .splash-char:nth-child(7) { animation-delay: 0.48s; }
-
-    /* 3. Loading bar directly underneath "BizFlow" */
-    .splash-loader {
-      position: absolute;
-      transform: translate3d(0, 58px, 0);
-      width: 54px;
-      height: 3.5px;
-      border-radius: 3px;
-      background: #E2E8F0;
-      overflow: hidden;
-      opacity: 0;
-      will-change: opacity;
-      animation: loaderAppear 0.3s ease-out 1.18s forwards;
-    }
-
-    .splash-loader-bar {
-      width: 55%;
-      height: 100%;
-      border-radius: 3px;
-      background: #0F766E;
-      will-change: transform;
-      animation: loaderSlide 1.05s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-    }
-
-    /* Continuous 3-phase trajectory without any mid-lift pause keyframe:
-       0% -> 12%: Crisp entrance at center (0, 0)
-       12% -> 48%: Glides right to (+68px, 0) while letters appear
-       48% -> 100%: Single uninterrupted sweep to (0, -52px) above "BizFlow" */
-    @keyframes logoTrajectory {
-      0% {
-        transform: translate3d(0px, 0px, 0) scale(0.88);
-        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-      }
-      12% {
-        transform: translate3d(0px, 0px, 0) scale(1);
-        animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-      }
-      48% {
-        transform: translate3d(68px, 0px, 0) scale(1);
-        animation-timing-function: cubic-bezier(0.42, 0, 0.18, 1);
-      }
-      100% {
-        transform: translate3d(0px, -52px, 0) scale(1);
-      }
-    }
-
-    @keyframes wordmarkTrajectory {
-      0%, 48% {
-        transform: translate3d(-38px, 0px, 0);
-        animation-timing-function: cubic-bezier(0.42, 0, 0.18, 1);
-      }
-      100% {
-        transform: translate3d(0px, 22px, 0);
-      }
-    }
-
-    @keyframes charReveal {
-      0% {
-        opacity: 0;
-        transform: translate3d(-6px, 5px, 0) scale(0.86);
-      }
-      100% {
-        opacity: 1;
-        transform: translate3d(0px, 0px, 0) scale(1);
-      }
-    }
-
-    @keyframes loaderAppear {
-      0% { opacity: 0; }
-      100% { opacity: 1; }
-    }
-
-    @keyframes loaderSlide {
-      0% { transform: translate3d(-110%, 0, 0); }
-      100% { transform: translate3d(210%, 0, 0); }
     }
   </style>
 </head>
 <body>
-  <div id="app-splash">
-    <div class="splash-stage">
-      <div class="splash-logo-Mover">
-        <img class="splash-logo" src="data:image/jpeg;base64,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" alt="BizFlow" decoding="sync" />
-      </div>
-      <div class="splash-wordmark" aria-label="BizFlow">
-        <span class="splash-char">B</span><span class="splash-char">i</span><span class="splash-char">z</span><span class="splash-char">F</span><span class="splash-char">l</span><span class="splash-char">o</span><span class="splash-char">w</span>
-      </div>
-      <div class="splash-loader">
-        <div class="splash-loader-bar"></div>
-      </div>
-    </div>
-  </div>
-  <script>
-    (function () {
-      var animDone = false;
-      var flutterReady = false;
-      var dismissed = false;
-
-      function tryDismiss() {
-        if (dismissed || !animDone || !flutterReady) return;
-        dismissed = true;
-        var el = document.getElementById('app-splash');
-        if (el) {
-          el.classList.add('splash-hide');
-          setTimeout(function () {
-            if (el.parentNode) el.parentNode.removeChild(el);
-          }, 340);
-        }
-      }
-
-      // Allow full logo -> letters -> move above -> loader animation to play (1.5s)
-      setTimeout(function () {
-        animDone = true;
-        tryDismiss();
-      }, 1500);
-
-      window.addEventListener('flutter-first-frame', function () {
-        flutterReady = true;
-        tryDismiss();
-      });
-    })();
-  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

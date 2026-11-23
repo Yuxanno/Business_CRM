@@ -22,9 +22,11 @@ const transactionSchema = new mongoose.Schema(
   { _id: false, versionKey: false }
 );
 
-transactionSchema.index({ userId: 1, date: -1 });
+transactionSchema.index({ userId: 1, date: -1, _id: -1 });
 transactionSchema.index({ userId: 1, createdAt: -1 });
-transactionSchema.index({ userId: 1, type: 1, date: -1 });
+transactionSchema.index({ userId: 1, type: 1, date: -1, _id: -1 });
 transactionSchema.index({ userId: 1, category: 1, date: -1 });
+transactionSchema.index({ userId: 1, orderId: 1 });
+transactionSchema.index({ userId: 1, debtId: 1 });
 
 module.exports = mongoose.model('Transaction', transactionSchema);

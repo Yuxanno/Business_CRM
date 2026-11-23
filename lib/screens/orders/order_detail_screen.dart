@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -83,11 +84,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       );
       if (confirm != true || !mounted) return;
     }
-    setState(() => _statusChanging = true);
     final updated = _order!.copyWith(
       status: newStatus,
       updatedAt: DateTime.now(),
     );
+    setState(() {
+      _order = updated;
+      _statusChanging = true;
+    });
     final provider = context.read<OrderProvider>();
     await provider.update(updated);
     if (mounted) {
@@ -95,8 +99,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       context.read<DashboardProvider>().reload();
     }
     HapticFeedback.lightImpact();
-    await _load();
     if (mounted) setState(() => _statusChanging = false);
+    unawaited(_load());
   }
 
   Future<void> _editOrder() async {
@@ -104,11 +108,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     HapticFeedback.selectionClick();
     await context.push('/orders/${_order!.id}/edit');
     if (mounted) {
-      await _load();
-      if (mounted) {
-        context.read<CustomerProvider>().load(silent: true);
-        context.read<DashboardProvider>().reload();
+      final latest = context
+          .read<OrderProvider>()
+          .allOrders
+          .where((o) => o.id == widget.orderId)
+          .firstOrNull;
+      if (latest != null) {
+        setState(() => _order = latest);
       }
+      unawaited(_load());
+      context.read<CustomerProvider>().load(silent: true);
+      context.read<DashboardProvider>().reload();
     }
   }
 
@@ -164,21 +174,42 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             Navigator.of(context, rootNavigator: true).pop();
             HapticFeedback.mediumImpact();
             const uuid = Uuid();
+            final clamped = cents.clamp(0, remainingCents);
+            final now = DateTime.now();
+            final newPayment = OrderPayment(
+              id: uuid.v4(),
+              orderId: _order!.id,
+              customerId: _order!.customerId,
+              amountCents: clamped,
+              paidAt: now,
+              notes: notesCtrl.text.trim().isNotEmpty
+                  ? notesCtrl.text.trim()
+                  : null,
+              transactionId: uuid.v4(),
+            );
+            if (mounted) {
+              setState(() {
+                _order = _order!.copyWith(
+                  receivedCents: _order!.receivedCents + clamped,
+                  updatedAt: now,
+                );
+                _payments = [newPayment, ..._payments];
+              });
+            }
             final customerProvider = context.read<CustomerProvider>();
             final dashboardProvider = context.read<DashboardProvider>();
             await context.read<OrderProvider>().recordPayment(
-                  orderId: _order!.id,
-                  customerId: _order!.customerId,
-                  amountCents: cents.clamp(0, remainingCents),
-                  paymentId: uuid.v4(),
-                  transactionId: uuid.v4(),
-                  notes: notesCtrl.text.trim().isNotEmpty
-                      ? notesCtrl.text.trim()
-                      : null,
+                  orderId: newPayment.orderId,
+                  customerId: newPayment.customerId,
+                  amountCents: newPayment.amountCents,
+                  paymentId: newPayment.id,
+                  transactionId: newPayment.transactionId!,
+                  paidAt: now,
+                  notes: newPayment.notes,
                 );
             customerProvider.load(silent: true);
             dashboardProvider.reload();
-            _load();
+            unawaited(_load());
           },
         ),
         body: ListView(

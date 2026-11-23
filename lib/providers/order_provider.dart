@@ -4,6 +4,7 @@ import '../models/order.dart';
 import '../repositories/order_repository.dart';
 import '../services/local_cache.dart';
 import '../services/notification_service.dart';
+import '../services/sync_queue.dart';
 
 class OrderProvider extends ChangeNotifier {
   static const int pageSize = 20;
@@ -228,36 +229,71 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  Future<Order?> getById(String id) => _orderRepo.getById(id);
+  Future<Order?> getById(String id) async {
+    try {
+      return await _orderRepo.getById(id);
+    } catch (_) {
+      // Offline / server asleep → fall back to what we already have.
+      return _orders.where((o) => o.id == id).firstOrNull;
+    }
+  }
 
   Future<List<Order>> getByCustomer(String customerId) =>
       _orderRepo.getByCustomer(customerId);
 
+  // ── Optimistic writes: UI updates in the same frame, server sync in background.
+
+  void _persistSnapshot() {
+    unawaited(LocalCache.writeMap(_cacheKey, {
+      'items': _orders.map((o) => o.toMap()).toList(),
+      'hasMore': _hasMore,
+    }));
+    unawaited(NotificationService.instance.updateOrders(_orders));
+  }
+
+  void _restore(List<Order> snapshot) {
+    _orders = snapshot;
+    notifyListeners();
+    _persistSnapshot();
+  }
+
   Future<void> add(Order order) async {
-    await _orderRepo.insert(order);
+    final before = List<Order>.of(_orders);
     _orders = [order, ..._orders];
     notifyListeners();
-    unawaited(NotificationService.instance.updateOrders(_orders));
-    unawaited(load(silent: true, force: true));
+    _persistSnapshot();
+    SyncQueue.background(
+      () => _orderRepo.insert(order),
+      onError: (_) => _restore(before),
+      onSuccess: () => load(silent: true, force: true),
+    );
   }
 
   Future<void> update(Order order) async {
-    await _orderRepo.update(order);
+    final before = List<Order>.of(_orders);
     final idx = _orders.indexWhere((o) => o.id == order.id);
     if (idx != -1) {
-      _orders[idx] = order;
+      _orders = List<Order>.of(_orders)..[idx] = order;
       notifyListeners();
-      unawaited(NotificationService.instance.updateOrders(_orders));
+      _persistSnapshot();
     }
-    unawaited(refreshCounts());
+    SyncQueue.background(
+      () => _orderRepo.update(order),
+      onError: (_) => _restore(before),
+      onSuccess: refreshCounts,
+    );
   }
 
   Future<void> delete(String id) async {
-    await _orderRepo.delete(id);
-    _orders.removeWhere((o) => o.id == id);
+    final before = List<Order>.of(_orders);
+    _orders = _orders.where((o) => o.id != id).toList();
     notifyListeners();
-    unawaited(NotificationService.instance.updateOrders(_orders));
-    unawaited(refreshCounts());
+    _persistSnapshot();
+    SyncQueue.background(
+      () => _orderRepo.delete(id),
+      onError: (_) => _restore(before),
+      onSuccess: refreshCounts,
+    );
   }
 
   Future<void> recordPayment({
@@ -270,28 +306,45 @@ class OrderProvider extends ChangeNotifier {
     String? notes,
   }) async {
     final now = paidAt ?? DateTime.now();
-    await _orderRepo.insertPayment(OrderPayment(
-      id: paymentId,
-      orderId: orderId,
-      customerId: customerId,
-      amountCents: amountCents,
-      paidAt: now,
-      notes: notes,
-      transactionId: transactionId,
-    ));
-
-    final updated = await _orderRepo.getById(orderId);
-    if (updated != null) {
-      final idx = _orders.indexWhere((o) => o.id == orderId);
-      if (idx != -1) {
-        _orders[idx] = updated;
-      } else {
-        _orders.insert(0, updated);
-      }
+    final before = List<Order>.of(_orders);
+    final idx = _orders.indexWhere((o) => o.id == orderId);
+    if (idx != -1) {
+      final o = _orders[idx];
+      _orders = List<Order>.of(_orders)
+        ..[idx] = o.copyWith(
+          receivedCents: o.receivedCents + amountCents,
+          updatedAt: now,
+        );
       notifyListeners();
-      unawaited(NotificationService.instance.updateOrders(_orders));
+      _persistSnapshot();
     }
-    unawaited(refreshCounts());
+
+    SyncQueue.background(
+      () => _orderRepo.insertPayment(OrderPayment(
+        id: paymentId,
+        orderId: orderId,
+        customerId: customerId,
+        amountCents: amountCents,
+        paidAt: now,
+        notes: notes,
+        transactionId: transactionId,
+      )),
+      onError: (_) => _restore(before),
+      onSuccess: () async {
+        final updated = await _orderRepo.getById(orderId);
+        if (updated != null) {
+          final i = _orders.indexWhere((o) => o.id == orderId);
+          if (i != -1) {
+            _orders = List<Order>.of(_orders)..[i] = updated;
+          } else {
+            _orders = [updated, ..._orders];
+          }
+          notifyListeners();
+          _persistSnapshot();
+        }
+        unawaited(refreshCounts());
+      },
+    );
   }
 
   Future<List<OrderPayment>> getPaymentsForOrder(String orderId) =>

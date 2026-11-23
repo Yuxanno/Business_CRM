@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/customer.dart';
 import '../repositories/customer_repository.dart';
 import '../services/local_cache.dart';
+import '../services/sync_queue.dart';
 
 class CustomerProvider extends ChangeNotifier {
   static const int pageSize = 50;
@@ -193,29 +194,65 @@ class CustomerProvider extends ChangeNotifier {
     }
   }
 
-  Future<Customer?> getById(String id) => _repo.getById(id);
-
-  Future<void> add(Customer customer) async {
-    await _repo.insert(customer);
-    _customers = [customer, ..._customers];
-    notifyListeners();
-    unawaited(load(silent: true, force: true));
-  }
-
-  Future<void> update(Customer customer) async {
-    await _repo.update(customer);
-    final idx = _customers.indexWhere((c) => c.id == customer.id);
-    if (idx != -1) {
-      _customers[idx] = customer;
-      notifyListeners();
+  Future<Customer?> getById(String id) async {
+    try {
+      return await _repo.getById(id);
+    } catch (_) {
+      return _customers.where((c) => c.id == id).firstOrNull;
     }
   }
 
-  Future<void> delete(String id) async {
-    await _repo.delete(id);
-    _customers.removeWhere((c) => c.id == id);
+  // ── Optimistic writes: UI updates in the same frame, server sync in background.
+
+  void _persistSnapshot() {
+    unawaited(LocalCache.writeMap(_cacheKey, {
+      'items': _customers.map((c) => c.toMap()).toList(),
+      'hasMore': _hasMore,
+    }));
+  }
+
+  void _restore(List<Customer> snapshot) {
+    _customers = snapshot;
     notifyListeners();
-    unawaited(refreshCounts());
+    _persistSnapshot();
+  }
+
+  Future<void> add(Customer customer) async {
+    final before = List<Customer>.of(_customers);
+    _customers = [customer, ..._customers];
+    notifyListeners();
+    _persistSnapshot();
+    SyncQueue.background(
+      () => _repo.insert(customer),
+      onError: (_) => _restore(before),
+      onSuccess: () => load(silent: true, force: true),
+    );
+  }
+
+  Future<void> update(Customer customer) async {
+    final before = List<Customer>.of(_customers);
+    final idx = _customers.indexWhere((c) => c.id == customer.id);
+    if (idx != -1) {
+      _customers = List<Customer>.of(_customers)..[idx] = customer;
+      notifyListeners();
+      _persistSnapshot();
+    }
+    SyncQueue.background(
+      () => _repo.update(customer),
+      onError: (_) => _restore(before),
+    );
+  }
+
+  Future<void> delete(String id) async {
+    final before = List<Customer>.of(_customers);
+    _customers = _customers.where((c) => c.id != id).toList();
+    notifyListeners();
+    _persistSnapshot();
+    SyncQueue.background(
+      () => _repo.delete(id),
+      onError: (_) => _restore(before),
+      onSuccess: refreshCounts,
+    );
   }
 
   Future<void> recordPayment(String customerId, int amountCents) async {

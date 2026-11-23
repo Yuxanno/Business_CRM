@@ -32,9 +32,17 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Логирование запросов с замером времени отклика (ms)
+// Логирование запросов с замером времени отклика (ms) и заголовком Server-Timing
 app.use((req, res, next) => {
   const start = process.hrtime.bigint();
+  const origWriteHead = res.writeHead;
+  res.writeHead = function (...args) {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    if (!res.headersSent) {
+      res.setHeader('Server-Timing', `app;dur=${durationMs.toFixed(1)}`);
+    }
+    return origWriteHead.apply(this, args);
+  };
   res.on('finish', () => {
     const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
     const timestamp = new Date().toLocaleTimeString('ru-RU');
@@ -191,4 +199,16 @@ app.listen(PORT, () => {
   console.log(`✅ База данных:       ${mongoose.connection.readyState === 1 ? 'Подключена' : 'Подключение...'}`);
   console.log('═'.repeat(70));
   console.log('📝 Логи запросов:\n');
+
+  // Keep Render instance and MongoDB connection pool warm every 9 minutes
+  const externalUrl = process.env.RENDER_EXTERNAL_URL || process.env.SELF_PING_URL;
+  if (externalUrl) {
+    const https = require('https');
+    const http = require('http');
+    const pingUrl = `${externalUrl.replace(/\/$/, '')}/health`;
+    const client = pingUrl.startsWith('https') ? https : http;
+    setInterval(() => {
+      client.get(pingUrl, (r) => r.resume()).on('error', () => {});
+    }, 9 * 60 * 1000).unref();
+  }
 });
