@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import 'l10n/app_localizations.dart';
 import 'l10n/app_tr.dart';
+import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 import 'providers/settings_provider.dart';
 import 'providers/customer_provider.dart';
@@ -20,7 +21,7 @@ import 'services/performance_service.dart';
 import 'services/api_client.dart';
 import 'services/sync_queue.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   PerformanceService.instance.startMonitoring();
 
@@ -33,75 +34,80 @@ Future<void> main() async {
     DeviceOrientation.portraitDown,
   ]));
 
-  final settingsProvider = SettingsProvider();
-  final dashboardProvider = DashboardProvider();
-  final customerProvider = CustomerProvider();
-  final orderProvider = OrderProvider();
-  final financeProvider = FinanceProvider();
-  final debtProvider = DebtProvider();
-
-  // Fast local preload capped at 80ms so startup is never blocked.
-  try {
-    await Future.wait([
-      settingsProvider.init(skipRemoteSync: true),
-      dashboardProvider.hydrateFromCache(),
-      customerProvider.hydrateFromCache(),
-      orderProvider.hydrateFromCache(),
-      financeProvider.hydrateFromCache(),
-      debtProvider.hydrateFromCache(),
-    ]).timeout(const Duration(milliseconds: 80));
-  } catch (_) {}
-
-  final initialLocation =
-      settingsProvider.isOnboardingDone ? '/home' : '/login';
-
-  // Open the connection / wake the server while the first frame renders.
-  ApiClient.instance.warmUp();
-
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: settingsProvider),
-        ChangeNotifierProvider.value(value: customerProvider),
-        ChangeNotifierProvider.value(value: orderProvider),
-        ChangeNotifierProvider.value(value: financeProvider),
-        ChangeNotifierProvider.value(value: debtProvider),
-        ChangeNotifierProvider.value(value: dashboardProvider),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => CustomerProvider()),
+        ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProvider(create: (_) => FinanceProvider()),
+        ChangeNotifierProvider(create: (_) => DebtProvider()),
+        ChangeNotifierProvider(create: (_) => DashboardProvider()),
       ],
-      child: BusinessManagerApp(initialLocation: initialLocation),
+      child: const BusinessManagerApp(),
     ),
   );
 }
 
 class BusinessManagerApp extends StatefulWidget {
-  const BusinessManagerApp({
-    super.key,
-    required this.initialLocation,
-  });
-
-  final String initialLocation;
+  const BusinessManagerApp({super.key});
 
   @override
   State<BusinessManagerApp> createState() => _BusinessManagerAppState();
 }
 
 class _BusinessManagerAppState extends State<BusinessManagerApp> {
-  late final GoRouter _router;
+  bool _ready = false;
+  GoRouter? _router;
 
   @override
   void initState() {
     super.initState();
-    _router = AppRouter.router(initialLocation: widget.initialLocation);
+    _initStartup();
+  }
+
+  Future<void> _initStartup() async {
+    final settings = context.read<SettingsProvider>();
+    final dashboard = context.read<DashboardProvider>();
+    final customers = context.read<CustomerProvider>();
+    final orders = context.read<OrderProvider>();
+    final finance = context.read<FinanceProvider>();
+    final debts = context.read<DebtProvider>();
+
+    await settings.init(skipRemoteSync: true);
+    if (!mounted) return;
+
+    _router = AppRouter.router(
+      initialLocation: settings.isOnboardingDone ? '/home' : '/login',
+    );
+    setState(() => _ready = true);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(Future.wait([
+        dashboard.hydrateFromCache(),
+        customers.hydrateFromCache(),
+        orders.hydrateFromCache(),
+        finance.hydrateFromCache(),
+        debts.hydrateFromCache(),
+      ]));
+      ApiClient.instance.warmUp();
+    });
   }
 
   @override
   void dispose() {
-    _router.dispose();
+    if (_ready) {
+      _router?.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_ready || _router == null) {
+      return const ColoredBox(color: AppColors.lightBackground);
+    }
+
     final localeCode =
         context.select<SettingsProvider, String>((s) => s.locale);
     AppTr.isEn = localeCode == 'en';
@@ -119,7 +125,7 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
       locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
-      routerConfig: _router,
+      routerConfig: _router!,
     );
   }
 }

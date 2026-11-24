@@ -151,7 +151,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
             // ── 3. Customer List ──────────────────────────────────────────
             Expanded(
-              child: provider.isLoading
+              child: (provider.isLoading ||
+                      (!provider.hasLoadedOnce &&
+                          provider.error == null &&
+                          baseList.isEmpty))
                   ? const Align(
                       alignment: Alignment.topCenter,
                       child: Padding(

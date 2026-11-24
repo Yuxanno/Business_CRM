@@ -552,7 +552,10 @@ class _DebtsScreenState extends State<DebtsScreen> {
 
             // ── 4. Scrollable Debts List ──────────────────────────────────
             Expanded(
-              child: provider.isLoading
+              child: (provider.isLoading ||
+                      (!provider.hasLoadedOnce &&
+                          provider.error == null &&
+                          provider.all.isEmpty))
                   ? const Align(
                       alignment: Alignment.topCenter,
                       child: Padding(

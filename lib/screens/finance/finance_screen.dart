@@ -280,7 +280,10 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
             // ── 3. Scrollable Transactions List ───────────────────────────
             Expanded(
-              child: provider.isLoading
+              child: (provider.isLoading ||
+                      (!provider.hasLoadedOnce &&
+                          provider.error == null &&
+                          allTx.isEmpty))
                   ? const Align(
                       alignment: Alignment.topCenter,
                       child: Padding(

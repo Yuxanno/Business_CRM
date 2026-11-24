@@ -145,7 +145,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
             // ── 3. Scrollable Orders List ─────────────────────────────────
             Expanded(
-              child: provider.isLoading
+              child: (provider.isLoading ||
+                      (!provider.hasLoadedOnce &&
+                          provider.error == null &&
+                          allOrders.isEmpty))
                   ? const Align(
                       alignment: Alignment.topCenter,
                       child: Padding(

@@ -300,8 +300,9 @@ class _RecentActivityBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final isLoading =
-        context.select<DashboardProvider, bool>((d) => d.isLoading);
+    final isLoading = context.select<DashboardProvider, bool>(
+      (d) => d.isLoading || (!d.hasData && !d.hasLoadedOnce),
+    );
     final recentActivity =
         context.select<DashboardProvider, List<AppTransaction>>(
       (d) => d.recentActivity,
