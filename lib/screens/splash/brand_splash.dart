@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../components/auth/auth_header.dart';
 import '../../theme/app_colors.dart';
-import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 
 /// Destination screen after the cold-start splash finishes.
@@ -62,7 +61,7 @@ class _BrandSplashState extends State<BrandSplash>
   static const double _kChipInitialSize = 130.0;
   static const double _kChipInitialRadius = 30.0;
   static const double _kChipInitialInset = 18.0; // 130 - 36 = 94dp inner logo
-  static const double _kPlateExpandedWidth = 304.0;
+  static const double _kLockupExpandedWidth = 284.0;
   static const double _kWordCenterScale = 1.65;
 
   late final AnimationController _controller;
@@ -356,11 +355,15 @@ class _BrandSplashState extends State<BrandSplash>
             final ringOpacity =
                 _controller.value <= _t500 ? 0.5 * (1.0 - ringProgress) : 0.0;
 
-            // 500–1500 ms: plate expands right, chip shifts left, word reveals left-to-right
+            // 500–1500 ms: chip shifts left, word emerges smoothly as chip moves
             final expandP = _interval(_t500, _t1500, Curves.easeInOutCubic);
-            final wordRevealP = _interval(_t500, _t1500, Curves.easeOutCubic);
+            final wordRevealP = _interval(
+              680 / _kBaseMs,
+              _t1500,
+              Curves.easeOutCubic,
+            );
 
-            // 1650–2450 ms: single diagonal shimmer sweep across the plate
+            // 1650–2450 ms: single diagonal shimmer sweep across the chip
             final shimmerP = _interval(_t1650, _t2450, Curves.easeInOutCubic);
             final showShimmer =
                 _controller.value >= _t1650 && _controller.value <= _t2450;
@@ -368,7 +371,7 @@ class _BrandSplashState extends State<BrandSplash>
             // Base centered geometry (before 2500 ms finale)
             final lockupWidth = lerpDouble(
               _kChipInitialSize,
-              _kPlateExpandedWidth,
+              _kLockupExpandedWidth,
               expandP,
             )!;
             final lockupLeft = cx - lockupWidth / 2;
@@ -376,22 +379,14 @@ class _BrandSplashState extends State<BrandSplash>
               lockupLeft + _kChipInitialSize / 2,
               cy,
             );
-            // Word center sits in the right section of the expanded 304dp plate
+            // Word sits cleanly to the right of the shifted chip (centered in the remaining space)
             final baseWordCenter = Offset(
-              cx + (_kChipInitialSize * 0.36) * expandP,
+              cx + 74.0,
               cy,
             );
 
             // Finale state (2500 ms+)
             double backdropOpacity = 1.0;
-            // Plate is visible from t=0 as the single unified 130dp rounded-30 surface
-            // so there is zero seam between chip and plate while they are together.
-            double plateOpacity = 1.0;
-            double plateScale = 1.0;
-            // Border & soft shadow fade in smoothly after frame 1 (0–500 ms) so frame 1
-            // is a pure white 130dp rounded square matching the native splash 1:1.
-            double plateBorderAlpha = ringProgress;
-            double plateShadowAlpha = 0.06 * ringProgress;
             double groupScale = 1.0;
             double groupOpacity = 1.0;
 
@@ -402,16 +397,17 @@ class _BrandSplashState extends State<BrandSplash>
             );
             double chipRadius = _kChipInitialRadius;
             double chipInset = _kChipInitialInset;
-            // While chip sits inside plate (0–2500 ms), chip has NO separate border
-            // or shadow of its own — preventing any curved seam line inside plate.
-            double chipBorderAlpha = 0.0;
-            double chipShadowAlpha = 0.0;
+            // Border & soft shadow fade in smoothly after frame 1 (0–500 ms) so frame 1
+            // is a pure white 130dp rounded square matching the native splash 1:1.
+            double chipBorderAlpha = ringProgress;
+            double chipShadowAlpha = 0.06 * ringProgress;
 
             Offset wordCenter = baseWordCenter;
             double wordScale = _kWordCenterScale;
             double wordOpacity = wordRevealP;
-            double wordClipFactor = wordRevealP;
-            double wordSlideDx = 26.0 * (1.0 - wordRevealP);
+            double wordSlideDx = 14.0 * (1.0 - wordRevealP);
+            // Clip word to the right of chip so it never protrudes behind/over chip at t=500ms.
+            double wordMinX = chipRect.right + 14.0;
 
             if (_controller.value > _t2500 && currentTarget != null) {
               _refreshTargetRectsIfNeeded(currentTarget);
@@ -420,14 +416,10 @@ class _BrandSplashState extends State<BrandSplash>
                 // Login Finale (2500–3500 ms)
                 final flightP =
                     _interval(_t2500, 1.0, Curves.easeInOutCubic);
-                final plateExitP =
-                    _interval(_t2500, 2950 / _kBaseMs, Curves.easeOutCubic);
-
-                plateOpacity = (1.0 - plateExitP).clamp(0.0, 1.0);
-                plateScale = lerpDouble(1.0, 0.82, plateExitP)!;
 
                 // Crossfade the splash backdrop out so LoginScreen appears underneath
                 backdropOpacity = (1.0 - flightP).clamp(0.0, 1.0);
+                wordMinX = 0.0;
 
                 final targetLogoRect = _cachedLoginLogoRect;
                 final targetWordRect = _cachedLoginWordRect;
@@ -437,8 +429,8 @@ class _BrandSplashState extends State<BrandSplash>
                   chipRect = Rect.lerp(chipRect, targetLogoRect, flightP)!;
                   chipRadius = lerpDouble(_kChipInitialRadius, 10.0, flightP)!;
                   chipInset = lerpDouble(_kChipInitialInset, 0.0, flightP)!;
-                  chipBorderAlpha = flightP;
-                  chipShadowAlpha = 0.06 * flightP;
+                  chipBorderAlpha = 1.0;
+                  chipShadowAlpha = 0.06;
 
                   wordCenter = Offset.lerp(
                     baseWordCenter,
@@ -447,7 +439,6 @@ class _BrandSplashState extends State<BrandSplash>
                   )!;
                   wordScale = lerpDouble(_kWordCenterScale, 1.0, flightP)!;
                   wordSlideDx = 0.0;
-                  wordClipFactor = 1.0;
                   wordOpacity = 1.0;
                 } else {
                   // Fallback when keys are unavailable: lift lockup up by ~262 dp with scale 0.5
@@ -473,11 +464,10 @@ class _BrandSplashState extends State<BrandSplash>
                 // Home Finale (2500–2900 ms, 400 ms crossfade)
                 final homeP =
                     _interval(_t2500, _t2900, Curves.easeInOutCubic);
+                wordMinX = 0.0;
 
                 if (kHomeAvatarLanding && _cachedHomeAvatarRect != null) {
                   final targetAvatar = _cachedHomeAvatarRect!;
-                  plateOpacity = (1.0 - homeP * 1.4).clamp(0.0, 1.0);
-                  plateScale = lerpDouble(1.0, 0.86, homeP)!;
                   wordOpacity = (1.0 - homeP * 1.4).clamp(0.0, 1.0);
                   backdropOpacity = (1.0 - homeP).clamp(0.0, 1.0);
 
@@ -487,7 +477,7 @@ class _BrandSplashState extends State<BrandSplash>
                   chipInset = lerpDouble(_kChipInitialInset, 0.0, homeP)!;
                   groupOpacity = (1.0 - homeP * 0.85).clamp(0.0, 1.0);
                 } else {
-                  // Default Home Finale: plate, chip & word scale 1.0 → 0.94 and dissolve (crossfade 400 ms)
+                  // Default Home Finale: chip & word scale 1.0 → 0.94 and dissolve (crossfade 400 ms)
                   groupScale = lerpDouble(1.0, 0.94, homeP)!;
                   groupOpacity = (1.0 - homeP).clamp(0.0, 1.0);
                   backdropOpacity = (1.0 - homeP).clamp(0.0, 1.0);
@@ -579,84 +569,42 @@ class _BrandSplashState extends State<BrandSplash>
                             ),
                           ),
 
-                        // 2b. White backdrop plate (unified surface from t=0, grows right 500–1500 ms)
-                        if (plateOpacity > 0.001)
-                          Positioned(
-                            left: cx - lockupWidth / 2,
-                            top: cy - _kChipInitialSize / 2,
-                            width: lockupWidth,
-                            height: _kChipInitialSize,
-                            child: Opacity(
-                              opacity: plateOpacity,
-                              child: Transform.scale(
-                                scale: plateScale,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.lightSurface,
-                                    borderRadius: BorderRadius.circular(
-                                      _kChipInitialRadius,
-                                    ),
-                                    border: plateBorderAlpha > 0.01
-                                        ? Border.all(
-                                            color: AppColors.lightBorder
-                                                .withValues(
-                                              alpha: plateBorderAlpha.clamp(
-                                                0.0,
-                                                1.0,
-                                              ),
-                                            ),
-                                          )
-                                        : null,
-                                    boxShadow: plateShadowAlpha > 0.001
-                                        ? [
-                                            BoxShadow(
-                                              color: AppColors.ink.withValues(
-                                                alpha: plateShadowAlpha,
-                                              ),
-                                              blurRadius: AppRadius.xl,
-                                              offset: const Offset(0, 8),
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                        // 2c. "BIZFLOW" wordmark (reveals left-to-right 500–1500 ms, flies to loginWordKey on login)
+                        // 2b. "BIZFLOW" wordmark (emerges cleanly to the right of chip as chip slides left)
                         if (wordOpacity > 0.001)
-                          Positioned(
-                            left: wordCenter.dx - 120,
-                            top: wordCenter.dy - 24,
-                            width: 240,
-                            height: 48,
-                            child: Center(
-                              child: Opacity(
-                                opacity: wordOpacity.clamp(0.0, 1.0),
-                                child: Transform.translate(
-                                  offset: Offset(-wordSlideDx, 0),
-                                  child: Transform.scale(
-                                    scale: wordScale,
-                                    alignment: Alignment.center,
-                                    child: ClipRect(
-                                      clipper: _LeftToRightRectClipper(
-                                        wordClipFactor.clamp(0.0, 1.0),
-                                      ),
-                                      child: Text(
-                                        'BIZFLOW',
-                                        maxLines: 1,
-                                        softWrap: false,
-                                        style: wordBaseStyle,
+                          ClipRect(
+                            clipper: _LeftEdgeClipper(wordMinX),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Positioned(
+                                  left: wordCenter.dx - 120,
+                                  top: wordCenter.dy - 24,
+                                  width: 240,
+                                  height: 48,
+                                  child: Center(
+                                    child: Opacity(
+                                      opacity: wordOpacity.clamp(0.0, 1.0),
+                                      child: Transform.translate(
+                                        offset: Offset(-wordSlideDx, 0),
+                                        child: Transform.scale(
+                                          scale: wordScale,
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            'BIZFLOW',
+                                            maxLines: 1,
+                                            softWrap: false,
+                                            style: wordBaseStyle,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
 
-                        // 2d. White square chip with BF logo (130dp radius 30 at t=0, flies to loginLogoKey on login)
+                        // 2c. White square chip with BF logo (130dp radius 30 at t=0, flies to loginLogoKey on login)
                         Positioned.fromRect(
                           rect: chipRect,
                           child: _buildChipBox(
@@ -669,28 +617,22 @@ class _BrandSplashState extends State<BrandSplash>
                           ),
                         ),
 
-                        // 2e. Diagonal shimmer pass (1650–2450 ms) drawn OVER the unified plate+chip+word
-                        // so chip never cuts off the shimmer or creates a seam line inside plate.
-                        if (showShimmer && plateOpacity > 0.001)
-                          Positioned(
-                            left: cx - lockupWidth / 2,
-                            top: cy - _kChipInitialSize / 2,
-                            width: lockupWidth,
-                            height: _kChipInitialSize,
+                        // 2d. Diagonal shimmer pass (1650–2450 ms) over the standalone logo chip
+                        if (showShimmer)
+                          Positioned.fromRect(
+                            rect: chipRect,
                             child: IgnorePointer(
                               child: ClipRRect(
-                                borderRadius: BorderRadius.circular(
-                                  _kChipInitialRadius,
-                                ),
+                                borderRadius: BorderRadius.circular(chipRadius),
                                 child: DecoratedBox(
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       begin: Alignment(
-                                        -1.6 + 3.2 * shimmerP - 0.45,
+                                        -1.6 + 3.2 * shimmerP - 0.55,
                                         -1.0,
                                       ),
                                       end: Alignment(
-                                        -1.6 + 3.2 * shimmerP + 0.45,
+                                        -1.6 + 3.2 * shimmerP + 0.55,
                                         1.0,
                                       ),
                                       colors: [
@@ -699,7 +641,7 @@ class _BrandSplashState extends State<BrandSplash>
                                         AppColors.primaryLight
                                             .withValues(alpha: 0.14),
                                         AppColors.lightSurface
-                                            .withValues(alpha: 0.55),
+                                            .withValues(alpha: 0.50),
                                         AppColors.primaryLight
                                             .withValues(alpha: 0.0),
                                       ],
@@ -773,16 +715,18 @@ class _BrandSplashState extends State<BrandSplash>
   }
 }
 
-class _LeftToRightRectClipper extends CustomClipper<Rect> {
-  const _LeftToRightRectClipper(this.widthFactor);
+class _LeftEdgeClipper extends CustomClipper<Rect> {
+  const _LeftEdgeClipper(this.minX);
 
-  final double widthFactor;
-
-  @override
-  Rect getClip(Size size) =>
-      Rect.fromLTWH(0, 0, size.width * widthFactor, size.height);
+  final double minX;
 
   @override
-  bool shouldReclip(covariant _LeftToRightRectClipper oldClipper) =>
-      oldClipper.widthFactor != widthFactor;
+  Rect getClip(Size size) {
+    final left = minX.clamp(0.0, size.width);
+    return Rect.fromLTRB(left, 0, size.width, size.height);
+  }
+
+  @override
+  bool shouldReclip(covariant _LeftEdgeClipper oldClipper) =>
+      oldClipper.minX != minX;
 }

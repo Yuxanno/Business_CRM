@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1064,14 +1066,7 @@ class _SignatureAuthButtonState extends State<_SignatureAuthButton> {
           ),
           child: widget.isLoading
               ? const Center(
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _ButtonPulseLoader(),
                 )
               : Row(
                   children: [
@@ -1115,7 +1110,60 @@ class _SignatureAuthButtonState extends State<_SignatureAuthButton> {
   }
 }
 
-class _AuthTransitionOverlay extends StatelessWidget {
+class _ButtonPulseLoader extends StatefulWidget {
+  const _ButtonPulseLoader();
+
+  @override
+  State<_ButtonPulseLoader> createState() => _ButtonPulseLoaderState();
+}
+
+class _ButtonPulseLoaderState extends State<_ButtonPulseLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            final phase = (_ctrl.value - i * 0.18) % 1.0;
+            final wave = math.sin(phase * math.pi).clamp(0.0, 1.0);
+            final scale = 0.72 + 0.38 * wave;
+            final opacity = 0.45 + 0.55 * wave;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3.5),
+              child: Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: opacity),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+}
+
+class _AuthTransitionOverlay extends StatefulWidget {
   const _AuthTransitionOverlay({
     required this.isRegister,
     required this.isSuccess,
@@ -1125,131 +1173,252 @@ class _AuthTransitionOverlay extends StatelessWidget {
   final bool isSuccess;
 
   @override
+  State<_AuthTransitionOverlay> createState() => _AuthTransitionOverlayState();
+}
+
+class _AuthTransitionOverlayState extends State<_AuthTransitionOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _loopCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _loopCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final label = isSuccess
-        ? (isRegister
+    final title = widget.isSuccess
+        ? (widget.isRegister
             ? context.tr('Аккаунт создан!', 'Account created!')
             : context.tr('Добро пожаловать!', 'Welcome back!'))
-        : (isRegister
-            ? context.tr('Создаём аккаунт...', 'Creating account...')
-            : context.tr('Вход в BizFlow...', 'Signing in...'));
+        : (widget.isRegister
+            ? context.tr('Создаём кабинет...', 'Creating workspace...')
+            : context.tr('Входим в BizFlow...', 'Signing in...'));
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      builder: (context, fade, child) => Opacity(
-        opacity: fade,
-        child: child,
-      ),
-      child: Positioned.fill(
-        child: ColoredBox(
-          color: colors.background.withValues(alpha: 0.88),
-          child: Center(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0.92, end: 1.0),
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutBack,
-              builder: (context, scale, child) => Transform.scale(
-                scale: scale,
-                child: child,
-              ),
-              child: Container(
-                width: 240,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 26,
+    final subtitle = widget.isSuccess
+        ? context.tr('Открываем панель управления', 'Opening your dashboard')
+        : (widget.isRegister
+            ? context.tr(
+                'Настраиваем профиль и валюту',
+                'Setting up profile & currency',
+              )
+            : context.tr(
+                'Проверяем данные и синхронизируемся',
+                'Verifying & syncing your account',
+              ));
+
+    return Positioned.fill(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        builder: (context, fade, child) => Opacity(
+          opacity: fade,
+          child: child,
+        ),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+          child: ColoredBox(
+            color: colors.background.withValues(alpha: 0.86),
+            child: Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0.92, end: 1.0),
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                builder: (context, scale, child) => Transform.scale(
+                  scale: scale,
+                  child: child,
                 ),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: colors.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.ink.withValues(alpha: 0.08),
-                      blurRadius: 28,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 280),
-                      switchInCurve: Curves.easeOutBack,
-                      transitionBuilder: (child, anim) => ScaleTransition(
-                        scale: anim,
-                        child: FadeTransition(opacity: anim, child: child),
+                child: Container(
+                  width: 268,
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: colors.border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.ink.withValues(alpha: 0.08),
+                        blurRadius: 30,
+                        offset: const Offset(0, 14),
                       ),
-                      child: isSuccess
-                          ? Container(
-                              key: const ValueKey('auth-ok'),
-                              width: 62,
-                              height: 62,
-                              decoration: BoxDecoration(
-                                color: colors.income,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: colors.income.withValues(alpha: 0.3),
-                                    blurRadius: 16,
-                                    offset: const Offset(0, 6),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.check_rounded,
-                                size: 32,
-                                color: Colors.white,
-                              ),
-                            )
-                          : SizedBox(
-                              key: const ValueKey('auth-loading'),
-                              width: 62,
-                              height: 62,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 62,
-                                    height: 62,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 3,
-                                      color: colors.primary,
-                                      backgroundColor: colors.border,
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        switchInCurve: Curves.easeOutCubic,
+                        transitionBuilder: (child, anim) => ScaleTransition(
+                          scale: anim,
+                          child: FadeTransition(opacity: anim, child: child),
+                        ),
+                        child: widget.isSuccess
+                            ? Container(
+                                key: const ValueKey('auth-ok'),
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: colors.income,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          colors.income.withValues(alpha: 0.30),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.check_rounded,
+                                  size: 36,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : SizedBox(
+                                key: const ValueKey('auth-loading'),
+                                width: 84,
+                                height: 84,
+                                child: AnimatedBuilder(
+                                  animation: _loopCtrl,
+                                  builder: (context, logoChild) {
+                                    final pulse = 0.5 +
+                                        0.5 *
+                                            math.sin(
+                                              _loopCtrl.value * 2 * math.pi,
+                                            );
+                                    return Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        // Breathing outer teal halo
+                                        Container(
+                                          width: 78 + 5 * pulse,
+                                          height: 78 + 5 * pulse,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: AppColors.primary.withValues(
+                                              alpha: 0.05 + 0.05 * pulse,
+                                            ),
+                                          ),
+                                        ),
+                                        // Custom orbiting dual-arc ring
+                                        CustomPaint(
+                                          size: const Size(82, 82),
+                                          painter: _BrandOrbitPainter(
+                                            progress: _loopCtrl.value,
+                                            primary: AppColors.primary,
+                                            accent: AppColors.primaryLight,
+                                            track: colors.border,
+                                          ),
+                                        ),
+                                        logoChild!,
+                                      ],
+                                    );
+                                  },
+                                  child: Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: colors.border),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.ink
+                                              .withValues(alpha: 0.06),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(13),
+                                      child: Image.asset(
+                                        'assets/images/logo.png',
+                                        fit: BoxFit.cover,
+                                      ),
                                     ),
                                   ),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(14),
-                                    child: Image.asset(
-                                      'assets/images/logo.png',
-                                      width: 42,
-                                      height: 42,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                    ),
-                    const SizedBox(height: 16),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: Text(
-                        label,
-                        key: ValueKey(label),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: colors.textPrimary,
-                          letterSpacing: -0.2,
+                      ),
+                      const SizedBox(height: 18),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: Text(
+                          title,
+                          key: ValueKey(title),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: colors.textPrimary,
+                            letterSpacing: -0.3,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 5),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: Text(
+                          subtitle,
+                          key: ValueKey(subtitle),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      if (!widget.isSuccess) ...[
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: 132,
+                          height: 3.5,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: ColoredBox(
+                              color: colors.surfaceSecondary,
+                              child: AnimatedBuilder(
+                                animation: _loopCtrl,
+                                builder: (context, _) {
+                                  final t = Curves.easeInOutCubic
+                                      .transform(_loopCtrl.value);
+                                  return FractionalTranslation(
+                                    translation: Offset(-1.0 + 2.0 * t, 0),
+                                    child: FractionallySizedBox(
+                                      widthFactor: 0.45,
+                                      alignment: Alignment.centerLeft,
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                          gradient: const LinearGradient(
+                                            colors: [
+                                              AppColors.primary,
+                                              AppColors.primaryLight,
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1258,4 +1427,57 @@ class _AuthTransitionOverlay extends StatelessWidget {
       ),
     );
   }
+}
+
+class _BrandOrbitPainter extends CustomPainter {
+  const _BrandOrbitPainter({
+    required this.progress,
+    required this.primary,
+    required this.accent,
+    required this.track,
+  });
+
+  final double progress;
+  final Color primary;
+  final Color accent;
+  final Color track;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.width / 2 - 3;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final trackPaint = Paint()
+      ..color = track.withValues(alpha: 0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    canvas.drawCircle(center, radius, trackPaint);
+
+    final angle = progress * 2 * math.pi;
+
+    final primaryPaint = Paint()
+      ..color = primary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.8
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(rect, angle, math.pi * 0.65, false, primaryPaint);
+
+    final accentPaint = Paint()
+      ..color = accent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+      rect,
+      angle + math.pi,
+      math.pi * 0.35,
+      false,
+      accentPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _BrandOrbitPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
