@@ -6,9 +6,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import 'components/auth/auth_header.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/app_tr.dart';
-import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 import 'providers/settings_provider.dart';
 import 'providers/customer_provider.dart';
@@ -17,6 +17,8 @@ import 'providers/finance_provider.dart';
 import 'providers/debt_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'router/app_router.dart';
+import 'screens/home/home_screen.dart';
+import 'screens/splash/brand_splash.dart';
 import 'services/performance_service.dart';
 import 'services/api_client.dart';
 import 'services/sync_queue.dart';
@@ -57,7 +59,12 @@ class BusinessManagerApp extends StatefulWidget {
 }
 
 class _BusinessManagerAppState extends State<BusinessManagerApp> {
+  static bool _coldStartSplashShown = false;
+
   bool _ready = false;
+  bool _splashDone = _coldStartSplashShown;
+  final ValueNotifier<SplashTarget?> _splashTarget =
+      ValueNotifier<SplashTarget?>(null);
   GoRouter? _router;
 
   @override
@@ -77,9 +84,11 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
     await settings.init(skipRemoteSync: true);
     if (!mounted) return;
 
+    final isDone = settings.isOnboardingDone;
     _router = AppRouter.router(
-      initialLocation: settings.isOnboardingDone ? '/home' : '/login',
+      initialLocation: isDone ? '/home' : '/login',
     );
+    _splashTarget.value = isDone ? SplashTarget.home : SplashTarget.login;
     setState(() => _ready = true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -94,20 +103,22 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
     });
   }
 
+  void _onSplashFinished() {
+    _coldStartSplashShown = true;
+    if (!mounted || _splashDone) return;
+    setState(() => _splashDone = true);
+  }
+
   @override
   void dispose() {
+    _splashTarget.dispose();
     if (_ready) {
       _router?.dispose();
     }
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (!_ready || _router == null) {
-      return const ColoredBox(color: AppColors.lightBackground);
-    }
-
+  Widget _buildRouterApp(BuildContext context) {
     final localeCode =
         context.select<SettingsProvider, String>((s) => s.locale);
     AppTr.isEn = localeCode == 'en';
@@ -126,6 +137,33 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       routerConfig: _router!,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appReady = _ready && _router != null;
+
+    if (_splashDone && appReady) {
+      return _buildRouterApp(context);
+    }
+
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (appReady) _buildRouterApp(context),
+          BrandSplash(
+            key: const ValueKey('cold_start_brand_splash'),
+            target: _splashTarget,
+            onFinished: _onSplashFinished,
+            loginLogoKey: AuthHeader.logoKey,
+            loginWordKey: AuthHeader.wordKey,
+            homeAvatarKey: HomeScreen.avatarKey,
+          ),
+        ],
+      ),
     );
   }
 }

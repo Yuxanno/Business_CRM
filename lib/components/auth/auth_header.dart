@@ -11,6 +11,24 @@ class AuthHeader extends StatelessWidget {
     this.eyebrow = 'BizFlow',
   });
 
+  /// GlobalKey attached to the 36x36 rounded logo square in the login header.
+  static final GlobalKey logoKey = GlobalKey(debugLabel: 'loginLogoKey');
+
+  /// GlobalKey attached to the uppercase "BIZFLOW" wordmark in the login header.
+  static final GlobalKey wordKey = GlobalKey(debugLabel: 'loginWordKey');
+
+  /// Controls visibility of the real header brand row while [BrandSplash]
+  /// is flying the chip and wordmark into their landing positions.
+  static final ValueNotifier<bool> brandVisible = ValueNotifier<bool>(true);
+
+  /// Shared wordmark text style so [BrandSplash] matches the login header 1:1 on landing.
+  static const TextStyle brandWordStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 2.2,
+    color: AppColors.primary,
+  );
+
   final String titleTop;
   final String titleAccent;
   final String subtitle;
@@ -24,43 +42,52 @@ class AuthHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Brand logo + eyebrow
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: colors.border),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.ink.withValues(alpha: 0.06),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
+        ValueListenableBuilder<bool>(
+          valueListenable: brandVisible,
+          builder: (context, visible, child) => Opacity(
+            opacity: visible ? 1.0 : 0.0,
+            child: child,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                key: logoKey,
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: colors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ink.withValues(alpha: 0.06),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(9),
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.cover,
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(9),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  fit: BoxFit.cover,
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              eyebrow.toUpperCase(),
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2.2,
-                color: colors.primary,
+              const SizedBox(width: 10),
+              Text(
+                eyebrow.toUpperCase(),
+                key: wordKey,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.merge(brandWordStyle)
+                    .copyWith(color: colors.primary) ??
+                    brandWordStyle.copyWith(color: colors.primary),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 18),
 

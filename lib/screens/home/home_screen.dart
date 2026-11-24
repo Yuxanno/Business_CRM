@@ -26,6 +26,9 @@ enum _ActivityFilter { all, income, expense }
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  /// GlobalKey attached to the top-left 44x44 square avatar in the Home header.
+  static final GlobalKey avatarKey = GlobalKey(debugLabel: 'homeAvatarKey');
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -625,6 +628,7 @@ class _Header extends StatelessWidget {
             child: Row(
               children: [
                 Container(
+                  key: HomeScreen.avatarKey,
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(

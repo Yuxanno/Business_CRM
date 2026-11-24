@@ -12,12 +12,6 @@ import io.flutter.embedding.android.FlutterActivity
 class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Android 12+: remove the (already invisible) system splash instantly,
-        // without any exit animation, so the first screen appears immediately.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            splashScreen.setOnExitAnimationListener { view -> view.remove() }
-        }
-
         super.onCreate(savedInstanceState)
 
         capRefreshRate()
