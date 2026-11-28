@@ -16,6 +16,7 @@ import '../../theme/app_colors.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/notification_service.dart';
+import '../../services/update_service.dart';
 import '../profile/account_store.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -90,9 +91,11 @@ class _LoginScreenState extends State<LoginScreen>
       curve: const Interval(0.22, 1.0, curve: Curves.easeOut),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<void>.delayed(const Duration(milliseconds: 900), () {
+      Future<void>.delayed(const Duration(milliseconds: 3800), () async {
+        if (!mounted) return;
+        await NotificationService.instance.promptPermissionIfNeeded(context);
         if (mounted) {
-          NotificationService.instance.promptPermissionIfNeeded(context);
+          unawaited(UpdateService.instance.checkAndPromptIfNeeded(context));
         }
       });
     });

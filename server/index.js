@@ -112,8 +112,46 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/bootstrap', require('./routes/bootstrap'));
 app.use('/api/speech', require('./routes/speech'));
 
+// Read latest app version & build number directly from pubspec.yaml (with env override support)
+function getLatestAppVersionInfo() {
+  let version = process.env.LATEST_APP_VERSION || '1.0.1';
+  let buildNumber = Number(process.env.LATEST_APP_BUILD) || 2;
+  try {
+    const pubspecPath = path.join(__dirname, '..', 'pubspec.yaml');
+    if (fs.existsSync(pubspecPath)) {
+      const content = fs.readFileSync(pubspecPath, 'utf8');
+      const match = content.match(/^version:\s*([0-9]+\.[0-9]+\.[0-9]+)(?:\+([0-9]+))?/m);
+      if (match) {
+        if (!process.env.LATEST_APP_VERSION) version = match[1];
+        if (!process.env.LATEST_APP_BUILD && match[2]) {
+          buildNumber = Number(match[2]) || buildNumber;
+        }
+      }
+    }
+  } catch (_) {}
+  return {
+    version,
+    buildNumber,
+    packageId: 'com.shaloon_dev.bizflow',
+    storeUrl:
+      process.env.PLAY_STORE_URL ||
+      'https://play.google.com/store/apps/details?id=com.shaloon_dev.bizflow',
+  };
+}
+
+app.get('/api/version', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.json(getLatestAppVersionInfo());
+});
+
 app.get('/api', (req, res) => {
-  res.json({ message: 'BizFlow API', version: '1.0.0' });
+  const info = getLatestAppVersionInfo();
+  res.json({
+    message: 'BizFlow API',
+    version: info.version,
+    buildNumber: info.buildNumber,
+    storeUrl: info.storeUrl,
+  });
 });
 
 // ─── Static Flutter Web (gzip + cache) ─────────────────────────────────────

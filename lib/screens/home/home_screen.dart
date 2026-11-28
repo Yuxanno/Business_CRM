@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../services/notification_service.dart';
+import '../../services/update_service.dart';
 import '../../components/notifications_sheet.dart';
 import '../../l10n/app_tr.dart';
 import '../../theme/app_colors.dart';
@@ -51,6 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
     await BootstrapService.loadAll(context);
     if (mounted) {
       await NotificationService.instance.promptPermissionIfNeeded(context);
+    }
+    if (mounted) {
+      unawaited(UpdateService.instance.checkAndPromptIfNeeded(context));
     }
   }
 

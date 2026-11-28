@@ -68,8 +68,6 @@ class _BrandSplashState extends State<BrandSplash>
 
   ImageStream? _logoStream;
   ImageStreamListener? _logoListener;
-  bool _firstFrameDeferred = false;
-  bool _firstFrameAllowed = false;
   bool _started = false;
   bool _holdingForTarget = false;
   bool _skipping = false;
@@ -99,13 +97,10 @@ class _BrandSplashState extends State<BrandSplash>
     _warmUpLogoAndStart();
   }
 
-  /// Resolves `assets/images/logo.png` before releasing Flutter's first frame
-  /// so Frame 1 matches the native splash without a missing-image blink.
+  /// Pre-warms `assets/images/logo.png` into the image cache and starts the
+  /// splash timeline without calling `deferFirstFrame()` (which can cause an
+  /// Android ANR if asset decoding or platform channels stall).
   void _warmUpLogoAndStart() {
-    final binding = WidgetsBinding.instance;
-    binding.deferFirstFrame();
-    _firstFrameDeferred = true;
-
     const provider = AssetImage('assets/images/logo.png');
     final stream = provider.resolve(ImageConfiguration.empty);
     _logoStream = stream;
@@ -114,6 +109,12 @@ class _BrandSplashState extends State<BrandSplash>
       onError: (_, _) => _releaseFirstFrameAndStart(),
     );
     stream.addListener(_logoListener!);
+
+    // Fail-safe: guarantee animation starts on the very first post-frame callback
+    // even if ImageStream takes longer on cold storage.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _releaseFirstFrameAndStart();
+    });
   }
 
   void _releaseFirstFrameAndStart() {
@@ -121,10 +122,6 @@ class _BrandSplashState extends State<BrandSplash>
       _logoStream!.removeListener(_logoListener!);
       _logoListener = null;
       _logoStream = null;
-    }
-    if (_firstFrameDeferred && !_firstFrameAllowed) {
-      _firstFrameAllowed = true;
-      WidgetsBinding.instance.allowFirstFrame();
     }
     if (!mounted || _started) return;
     _started = true;
@@ -296,10 +293,6 @@ class _BrandSplashState extends State<BrandSplash>
       _logoStream!.removeListener(_logoListener!);
       _logoListener = null;
       _logoStream = null;
-    }
-    if (_firstFrameDeferred && !_firstFrameAllowed) {
-      _firstFrameAllowed = true;
-      WidgetsBinding.instance.allowFirstFrame();
     }
     AuthHeader.brandVisible.value = true;
     _controller.dispose();

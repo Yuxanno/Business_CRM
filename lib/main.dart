@@ -81,7 +81,11 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
     final finance = context.read<FinanceProvider>();
     final debts = context.read<DebtProvider>();
 
-    await settings.init(skipRemoteSync: true);
+    try {
+      await settings
+          .init(skipRemoteSync: true)
+          .timeout(const Duration(milliseconds: 1800));
+    } catch (_) {}
     if (!mounted) return;
 
     final isDone = settings.isOnboardingDone;
