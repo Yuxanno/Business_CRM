@@ -28,7 +28,7 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(
                             mapOf(
-                                "version" to (pkgInfo.versionName ?: "1.0.1"),
+                                "version" to (pkgInfo.versionName ?: "1.0.3"),
                                 "buildNumber" to versionCode,
                                 "packageName" to packageName
                             )
@@ -36,8 +36,8 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Exception) {
                         result.success(
                             mapOf(
-                                "version" to "1.0.1",
-                                "buildNumber" to 2,
+                                "version" to "1.0.3",
+                                "buildNumber" to 4,
                                 "packageName" to packageName
                             )
                         )

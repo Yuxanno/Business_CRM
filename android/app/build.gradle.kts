@@ -22,14 +22,14 @@ val pubspecVersionPair: Pair<String, Int> = run {
         val match = Regex("""^version:\s*([0-9]+\.[0-9]+\.[0-9]+)(?:\+([0-9]+))?""", RegexOption.MULTILINE)
             .find(pubspecFile.readText())
         if (match != null) {
-            val vName = match.groupValues[1].ifEmpty { "1.0.1" }
-            val vCode = match.groupValues.getOrNull(2)?.toIntOrNull() ?: 2
+            val vName = match.groupValues[1].ifEmpty { "1.0.3" }
+            val vCode = match.groupValues.getOrNull(2)?.toIntOrNull() ?: 4
             vName to vCode
         } else {
-            "1.0.1" to 2
+            "1.0.3" to 4
         }
     } else {
-        "1.0.1" to 2
+        "1.0.3" to 4
     }
 }
 

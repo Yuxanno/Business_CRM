@@ -114,8 +114,8 @@ app.use('/api/speech', require('./routes/speech'));
 
 // Read latest app version & build number directly from pubspec.yaml (with env override support)
 function getLatestAppVersionInfo() {
-  let version = process.env.LATEST_APP_VERSION || '1.0.1';
-  let buildNumber = Number(process.env.LATEST_APP_BUILD) || 2;
+  let version = process.env.LATEST_APP_VERSION || '1.0.3';
+  let buildNumber = Number(process.env.LATEST_APP_BUILD) || 4;
   try {
     const pubspecPath = path.join(__dirname, '..', 'pubspec.yaml');
     if (fs.existsSync(pubspecPath)) {
