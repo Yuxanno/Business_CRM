@@ -17,9 +17,9 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
-  /// Fallback compiled version matching `pubspec.yaml` (`1.0.1+2`).
-  static const String kFallbackVersion = '1.0.1';
-  static const int kFallbackBuildNumber = 2;
+  /// Fallback compiled version matching `pubspec.yaml` (`1.0.2+3`).
+  static const String kFallbackVersion = '1.0.2';
+  static const int kFallbackBuildNumber = 3;
   static const String kPackageId = 'com.shaloon_dev.bizflow';
   static const String kPlayStoreWebUrl =
       'https://play.google.com/store/apps/details?id=$kPackageId';

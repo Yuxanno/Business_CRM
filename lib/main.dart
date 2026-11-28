@@ -54,6 +54,10 @@ void main() {
 class BusinessManagerApp extends StatefulWidget {
   const BusinessManagerApp({super.key});
 
+  /// Notifies screens when the cold-start BrandSplash has finished so dialogs
+  /// and background reminders never collide with the splash transition.
+  static final ValueNotifier<bool> splashCompleted = ValueNotifier<bool>(false);
+
   @override
   State<BusinessManagerApp> createState() => _BusinessManagerAppState();
 }
@@ -65,11 +69,13 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
   bool _splashDone = _coldStartSplashShown;
   final ValueNotifier<SplashTarget?> _splashTarget =
       ValueNotifier<SplashTarget?>(null);
+  final GlobalKey _routerAppKey = GlobalKey(debugLabel: 'bizflow_router_app');
   GoRouter? _router;
 
   @override
   void initState() {
     super.initState();
+    BusinessManagerApp.splashCompleted.value = _coldStartSplashShown;
     _initStartup();
   }
 
@@ -88,6 +94,19 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
     } catch (_) {}
     if (!mounted) return;
 
+    // Pre-hydrate local snapshot cache before creating GoRouter so the initial
+    // screen (/home or /login) renders its first frame with data already in memory.
+    try {
+      await Future.wait([
+        dashboard.hydrateFromCache(),
+        customers.hydrateFromCache(),
+        orders.hydrateFromCache(),
+        finance.hydrateFromCache(),
+        debts.hydrateFromCache(),
+      ]).timeout(const Duration(milliseconds: 600));
+    } catch (_) {}
+    if (!mounted) return;
+
     final isDone = settings.isOnboardingDone;
     _router = AppRouter.router(
       initialLocation: isDone ? '/home' : '/login',
@@ -96,19 +115,13 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
     setState(() => _ready = true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(Future.wait([
-        dashboard.hydrateFromCache(),
-        customers.hydrateFromCache(),
-        orders.hydrateFromCache(),
-        finance.hydrateFromCache(),
-        debts.hydrateFromCache(),
-      ]));
       ApiClient.instance.warmUp();
     });
   }
 
   void _onSplashFinished() {
     _coldStartSplashShown = true;
+    BusinessManagerApp.splashCompleted.value = true;
     if (!mounted || _splashDone) return;
     setState(() => _splashDone = true);
   }
@@ -132,6 +145,7 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
         : const Locale('ru');
 
     return MaterialApp.router(
+      key: _routerAppKey,
       title: 'BizFlow',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: AppMessenger.key,
@@ -148,24 +162,24 @@ class _BusinessManagerAppState extends State<BusinessManagerApp> {
   Widget build(BuildContext context) {
     final appReady = _ready && _router != null;
 
-    if (_splashDone && appReady) {
-      return _buildRouterApp(context);
-    }
-
+    // Keep the outer Directionality -> Stack permanently so MaterialApp.router
+    // and GoRouter's StatefulShellRoute are NEVER unmounted or re-parented
+    // when _splashDone transitions from false to true.
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Stack(
         fit: StackFit.expand,
         children: [
           if (appReady) _buildRouterApp(context),
-          BrandSplash(
-            key: const ValueKey('cold_start_brand_splash'),
-            target: _splashTarget,
-            onFinished: _onSplashFinished,
-            loginLogoKey: AuthHeader.logoKey,
-            loginWordKey: AuthHeader.wordKey,
-            homeAvatarKey: HomeScreen.avatarKey,
-          ),
+          if (!_splashDone)
+            BrandSplash(
+              key: const ValueKey('cold_start_brand_splash'),
+              target: _splashTarget,
+              onFinished: _onSplashFinished,
+              loginLogoKey: AuthHeader.logoKey,
+              loginWordKey: AuthHeader.wordKey,
+              homeAvatarKey: HomeScreen.avatarKey,
+            ),
         ],
       ),
     );

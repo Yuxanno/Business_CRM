@@ -40,7 +40,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
   int? _touchedLineSpotIndex;
   int? _touchedBarGroupIndex;
   int? _touchedBarRodIndex;
-  bool _suppressChartLerp = false;
 
   static bool _isHoldEvent(FlTouchEvent event) =>
       event is FlTapDownEvent ||
@@ -70,7 +69,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
         _touchedBarRodIndex != null) {
       setState(() {
         _clearTouchedState();
-        _suppressChartLerp = true;
       });
     }
   }
@@ -83,7 +81,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
         oldWidget.dailyData != widget.dailyData ||
         oldWidget.currency != widget.currency) {
       _clearTouchedState();
-      _suppressChartLerp = false;
     }
   }
 
@@ -310,7 +307,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
                                 setState(() {
                                   _mode = _ChartMode.bars;
                                   _clearTouchedState();
-                                  _suppressChartLerp = false;
                                 });
                               }
                             },
@@ -328,7 +324,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
                                 setState(() {
                                   _mode = _ChartMode.area;
                                   _clearTouchedState();
-                                  _suppressChartLerp = false;
                                 });
                               }
                             },
@@ -364,7 +359,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
                             setState(() {
                               _cumulative = true;
                               _clearTouchedState();
-                              _suppressChartLerp = false;
                             });
                           }
                         },
@@ -379,7 +373,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
                             setState(() {
                               _cumulative = false;
                               _clearTouchedState();
-                              _suppressChartLerp = false;
                             });
                           }
                         },
@@ -628,7 +621,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
               setState(() {
                 _touchedBarGroupIndex = nextGroup;
                 _touchedBarRodIndex = nextRod;
-                _suppressChartLerp = true;
               });
             }
           },
@@ -674,8 +666,7 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
           ),
         ),
       ),
-      duration:
-          _suppressChartLerp ? Duration.zero : const Duration(milliseconds: 350),
+      duration: Duration.zero,
       curve: Curves.easeOutCubic,
     );
   }
@@ -882,7 +873,6 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
             if (nextIdx != _touchedLineSpotIndex) {
               setState(() {
                 _touchedLineSpotIndex = nextIdx;
-                _suppressChartLerp = true;
               });
             }
           },
@@ -957,8 +947,7 @@ class _FinanceBarChartState extends State<FinanceBarChart> {
           ),
         ),
       ),
-      duration:
-          _suppressChartLerp ? Duration.zero : const Duration(milliseconds: 350),
+      duration: Duration.zero,
       curve: Curves.easeOutCubic,
     );
   }

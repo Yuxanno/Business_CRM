@@ -206,7 +206,6 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> init({bool skipRemoteSync = false}) async {
     _isLoading = true;
-    notifyListeners();
     _settings = await _repo.load();
     AppTr.isEn = _settings.locale == 'en';
     await _loadCategories();

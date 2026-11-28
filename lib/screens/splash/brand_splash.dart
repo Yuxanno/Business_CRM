@@ -204,8 +204,6 @@ class _BrandSplashState extends State<BrandSplash>
 
     // For Home target, the finale finishes at 2900 ms (_t2900).
     if (t == SplashTarget.home && _controller.value >= _t2900) {
-      _controller.stop();
-      _controller.value = _t2900;
       _completeSplash();
     }
   }
@@ -252,8 +250,13 @@ class _BrandSplashState extends State<BrandSplash>
   void _completeSplash() {
     if (_finished || !mounted) return;
     _finished = true;
+    _controller.stop();
     AuthHeader.brandVisible.value = true;
-    widget.onFinished();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.onFinished();
+      }
+    });
   }
 
   Rect? _measureKeyRect(GlobalKey? key) {

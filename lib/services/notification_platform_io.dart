@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
@@ -6,71 +7,89 @@ import 'package:timezone/timezone.dart' as tz;
 final FlutterLocalNotificationsPlugin _plugin =
     FlutterLocalNotificationsPlugin();
 bool _initialized = false;
+Future<void>? _initFuture;
 
 const String _channelId = 'bizflow_reminders';
 const String _channelName = 'BizFlow Reminders';
 const String _channelDesc =
     'Reminders for upcoming and overdue debts and order payments';
 
-Future<void> initPlatformNotifications() async {
-  if (_initialized) return;
-  tz_data.initializeTimeZones();
+Future<void> initPlatformNotifications() {
+  if (_initialized) return Future<void>.value();
+  return _initFuture ??= _doInitPlatformNotifications();
+}
 
-  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-  const darwinSettings = DarwinInitializationSettings(
-    requestAlertPermission: false,
-    requestBadgePermission: false,
-    requestSoundPermission: false,
-  );
+Future<void> _doInitPlatformNotifications() async {
+  try {
+    tz_data.initializeTimeZones();
 
-  const settings = InitializationSettings(
-    android: androidSettings,
-    iOS: darwinSettings,
-    macOS: darwinSettings,
-  );
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const darwinSettings = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
 
-  await _plugin.initialize(settings);
-  _initialized = true;
+    const settings = InitializationSettings(
+      android: androidSettings,
+      iOS: darwinSettings,
+      macOS: darwinSettings,
+    );
+
+    await _plugin
+        .initialize(settings)
+        .timeout(const Duration(seconds: 3));
+    _initialized = true;
+  } catch (_) {
+    _initFuture = null;
+  }
 }
 
 Future<bool> requestPlatformNotificationPermission() async {
   await initPlatformNotifications();
 
-  if (Platform.isAndroid) {
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    final granted = await android?.requestNotificationsPermission();
-    return granted ?? true;
-  }
+  try {
+    if (Platform.isAndroid) {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final granted = await android
+          ?.requestNotificationsPermission()
+          .timeout(const Duration(seconds: 15));
+      return granted ?? true;
+    }
 
-  if (Platform.isIOS) {
-    final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    final granted = await ios?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    return granted ?? false;
-  }
+    if (Platform.isIOS) {
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      final granted = await ios?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      return granted ?? false;
+    }
 
-  if (Platform.isMacOS) {
-    final mac = _plugin.resolvePlatformSpecificImplementation<
-        MacOSFlutterLocalNotificationsPlugin>();
-    final granted = await mac?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    return granted ?? false;
-  }
+    if (Platform.isMacOS) {
+      final mac = _plugin.resolvePlatformSpecificImplementation<
+          MacOSFlutterLocalNotificationsPlugin>();
+      final granted = await mac?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      return granted ?? false;
+    }
+  } catch (_) {}
 
   return true;
 }
 
 Future<void> cancelAllPlatformNotifications() async {
   if (!_initialized) return;
-  await _plugin.cancelAll();
+  try {
+    await _plugin.cancelAll().timeout(const Duration(seconds: 2));
+  } catch (_) {}
 }
 
 NotificationDetails _platformDetails() {
@@ -99,7 +118,12 @@ Future<void> showPlatformNotification({
   required String body,
 }) async {
   await initPlatformNotifications();
-  await _plugin.show(id, title, body, _platformDetails());
+  if (!_initialized) return;
+  try {
+    await _plugin
+        .show(id, title, body, _platformDetails())
+        .timeout(const Duration(seconds: 2));
+  } catch (_) {}
 }
 
 Future<void> schedulePlatformNotification({
@@ -109,18 +133,22 @@ Future<void> schedulePlatformNotification({
   required DateTime localScheduledAt,
 }) async {
   await initPlatformNotifications();
+  if (!_initialized) return;
   if (!localScheduledAt.isAfter(DateTime.now())) return;
 
-  final utcTarget = localScheduledAt.toUtc();
-  final tzDate = tz.TZDateTime.from(utcTarget, tz.UTC);
+  try {
+    final utcTarget = localScheduledAt.toUtc();
+    final tzDate = tz.TZDateTime.from(utcTarget, tz.UTC);
 
-  await _plugin.zonedSchedule(
-    id,
-    title,
-    body,
-    tzDate,
-    _platformDetails(),
-    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-  );
+    await _plugin
+        .zonedSchedule(
+          id,
+          title,
+          body,
+          tzDate,
+          _platformDetails(),
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        )
+        .timeout(const Duration(seconds: 2));
+  } catch (_) {}
 }
-

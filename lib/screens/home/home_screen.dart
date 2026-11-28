@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import '../../main.dart';
 import '../../services/notification_service.dart';
 import '../../services/update_service.dart';
 import '../../components/notifications_sheet.dart';
@@ -50,6 +51,27 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     // Hydrates cache in parallel and runs a single batched /api/bootstrap request
     await BootstrapService.loadAll(context);
+
+    // Wait until cold-start BrandSplash finishes before showing any modal dialogs
+    // so dialogs never open underneath the splash overlay during startup transition.
+    if (!BusinessManagerApp.splashCompleted.value) {
+      final completer = Completer<void>();
+      void listener() {
+        if (BusinessManagerApp.splashCompleted.value &&
+            !completer.isCompleted) {
+          completer.complete();
+        }
+      }
+
+      BusinessManagerApp.splashCompleted.addListener(listener);
+      try {
+        await completer.future.timeout(const Duration(seconds: 4));
+      } catch (_) {
+      } finally {
+        BusinessManagerApp.splashCompleted.removeListener(listener);
+      }
+    }
+
     if (mounted) {
       await NotificationService.instance.promptPermissionIfNeeded(context);
     }

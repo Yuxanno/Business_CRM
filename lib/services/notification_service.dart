@@ -67,6 +67,8 @@ class NotificationService {
       ValueNotifier<List<AppNotification>>([]);
 
   bool _initialized = false;
+  Future<void>? _initFuture;
+  bool _syncInFlight = false;
   bool _enabled = false;
   bool _promptVisible = false;
   Set<String> _readIds = {};
@@ -80,9 +82,12 @@ class NotificationService {
 
   int get unreadCount => itemsNotifier.value.where((n) => !n.isRead).length;
 
-  Future<void> init() async {
-    if (_initialized) return;
-    _initialized = true;
+  Future<void> init() {
+    if (_initialized) return Future<void>.value();
+    return _initFuture ??= _doInit();
+  }
+
+  Future<void> _doInit() async {
     try {
       await initPlatformNotifications();
       final prefs = await SharedPreferences.getInstance();
@@ -90,7 +95,10 @@ class NotificationService {
       _readIds = (prefs.getStringList(_readIdsKey) ?? const []).toSet();
       _dismissedIds =
           (prefs.getStringList(_dismissedIdsKey) ?? const []).toSet();
-    } catch (_) {}
+      _initialized = true;
+    } catch (_) {
+      _initFuture = null;
+    }
   }
 
   Future<void> markAsRead(String id) async {
@@ -289,8 +297,11 @@ class NotificationService {
   }
 
   Future<void> _syncInternal() async {
-    await init();
-    await cancelAllPlatformNotifications();
+    if (_syncInFlight) return;
+    _syncInFlight = true;
+    try {
+      await init();
+      await cancelAllPlatformNotifications();
 
     final isEn = _lastLocale == 'en';
     final currency = _lastCurrency;
@@ -651,7 +662,10 @@ class NotificationService {
       }
     }
 
-    inAppItems.sort((a, b) => a.urgency.index.compareTo(b.urgency.index));
-    itemsNotifier.value = inAppItems;
+      inAppItems.sort((a, b) => a.urgency.index.compareTo(b.urgency.index));
+      itemsNotifier.value = inAppItems;
+    } finally {
+      _syncInFlight = false;
+    }
   }
 }

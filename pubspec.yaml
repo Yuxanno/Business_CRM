@@ -2,7 +2,7 @@ name: business_manager
 description: "BizFlow — personal business management application."
 publish_to: 'none'
 
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.11.5
@@ -53,8 +53,6 @@ dependencies:
   # Local notifications & timezone scheduling
   flutter_local_notifications: ^19.5.0
   timezone: ^0.10.0
-  cronet_http: ^1.10.1
-  cupertino_http: ^3.1.0
 
   # Haptics (uses Flutter's built-in HapticFeedback)
   # No extra package needed — HapticFeedback is in flutter/services.dart

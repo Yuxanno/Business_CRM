@@ -14,6 +14,25 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Read versionName and versionCode directly from pubspec.yaml so building via
+// Android Studio ("Generate Signed Bundle / APK") never falls back to versionCode = 1.
+val pubspecVersionPair: Pair<String, Int> = run {
+    val pubspecFile = rootProject.file("../pubspec.yaml")
+    if (pubspecFile.exists()) {
+        val match = Regex("""^version:\s*([0-9]+\.[0-9]+\.[0-9]+)(?:\+([0-9]+))?""", RegexOption.MULTILINE)
+            .find(pubspecFile.readText())
+        if (match != null) {
+            val vName = match.groupValues[1].ifEmpty { "1.0.1" }
+            val vCode = match.groupValues.getOrNull(2)?.toIntOrNull() ?: 2
+            vName to vCode
+        } else {
+            "1.0.1" to 2
+        }
+    } else {
+        "1.0.1" to 2
+    }
+}
+
 android {
     namespace = "com.shaloon_dev.bizflow"
     compileSdk = flutter.compileSdkVersion
@@ -33,8 +52,8 @@ android {
         applicationId = "com.shaloon_dev.bizflow"
         minSdk = maxOf(flutter.minSdkVersion, 23)
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = pubspecVersionPair.second
+        versionName = pubspecVersionPair.first
         multiDexEnabled = true
     }
 
